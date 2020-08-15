@@ -11,6 +11,7 @@ pub enum Type {
 	Fn(Vec<Span<Type>>, Box<Span<Type>>),
 	Void,
 	Err,
+	NoReturn,
 }
 
 impl Type {
@@ -31,6 +32,7 @@ impl Type {
 			)],
 			Self::Void => vec![],
 			Self::Err => vec![],
+			Self::NoReturn => vec![],
 		}
 	}
 }
@@ -52,6 +54,7 @@ impl std::fmt::Display for Type {
 			),
 			Self::Void => write!(f, "void"),
 			Self::Err => write!(f, "ERROR (Type not known)"),
+			Self::NoReturn => write!(f, "!"),
 		}
 	}
 }

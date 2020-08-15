@@ -1,7 +1,8 @@
 fn main() -> void {
 	hola(1);
 	1 + 1;
-	adios_(2, 3);
+	adios(2, 3);
+	print("hola");
 }
 fn hola(n: number) -> void {
 	1 + n;

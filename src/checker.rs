@@ -3,15 +3,21 @@ use crate::error::ReturnValue;
 use crate::scope::{self, Scope};
 use crate::span::{Span, SpanError};
 use crate::error::Error;
+use crate::file_provider::fs::FileProvider;
+
+use std::path::Path;
 
 pub fn check(items_slice: &[Span<Item>]) -> Result<(), Error> {
 	let mut scope = Scope::root();
+	if let Err(e) = load_std(&mut scope, "src/std") {
+		return Err(e)
+	}
 	for item in items_slice {
 		match item.as_ref() {
 			Item::Fn(name, _, _, _) => scope.add_variable(
 				name.val(),
 				scope::Type::NoMut(item.as_ref().get_type()),
-				Some((item, false)),
+				Some((item.clone(), false)),
 			),
 		}
 		.expect("Error adding item");
@@ -28,14 +34,14 @@ pub fn check(items_slice: &[Span<Item>]) -> Result<(), Error> {
 
 fn check_item(
 	variable: &String,
-	scope: &mut Scope<Option<(&Span<Item>, bool)>>,
+	scope: &mut Scope<Option<(Span<Item>, bool)>>,
 ) -> Result<(), Error> {
 	if let Ok(Some((main, checked))) = scope.get_value(variable) {
 		if *checked {
 			Ok(())
 		} else {
 			let main = main.clone();
-			scope.set_value(variable, Some((main, true))).expect("Item cant be checked");
+			scope.set_value(variable, Some((main.clone(), true))).expect("Item cant be checked");
 			match main.val() {
 				Item::Fn(_, args, ret, block) => {
 					let mut scope = scope.clone().push();
@@ -74,7 +80,7 @@ fn check_item(
 
 fn check_expr(
 	expr: &Span<Expr>,
-	scope: &mut Scope<Option<(&Span<Item>, bool)>>,
+	scope: &mut Scope<Option<(Span<Item>, bool)>>,
 ) -> Result<(), Error> {
 	match expr.as_ref() {
 		Expr::Block(b) =>  {
@@ -126,4 +132,29 @@ fn get_type_error(t: Span<TypeError>) -> Error {
 			t.error(format!("Name `{}` not defined", id), ReturnValue::IdentNotDefined)
 		}
 	}
+}
+
+fn load_std<P: AsRef<Path>>(scope: &mut Scope<Option<(Span<Item>, bool)>>, std_path: P) -> Result<(), Error> {
+	let fp = FileProvider::new(&std_path);
+	{
+		let tokens = match crate::tokens::tokenize("print.lang", &fp){
+			Ok(v) => v,
+			Err(e) => return Err(e)
+		};
+		let items = match crate::parser::parse_lines(tokens, true){
+			Ok(v) => v,
+			Err(e) => return Err(e)
+		};
+		for item in items {
+			match item.as_ref() {
+				Item::Fn(name, _, _, _) => scope.add_variable(
+					name.val(),
+					scope::Type::NoMut(item.as_ref().get_type()),
+					Some((item, true)),
+				),
+			}
+			.expect("Error adding item");
+		}
+	}
+	Ok(())
 }

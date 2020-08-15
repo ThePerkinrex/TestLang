@@ -32,7 +32,7 @@ fn main() {
     //eprintln!("{}", tokens[0].error("").display(&fprov));
 
     let buffer_writer = BufferWriter::stdout(ColorChoice::Always);
-    match parser::parse_lines(tokens) {
+    match parser::parse_lines(tokens, false) {
         Ok(items) => {
             if let Err(e) = checker::check(&items) {
                 e.display(&fprov, &buffer_writer);
@@ -69,7 +69,7 @@ fn repl() {
         let tokens = tokens::tokenize("repl", &file_provider);
         if let Err(mut e) = match tokens {
             Ok(tokens) => {
-                let ast = parser::parse_expr(&tokens);
+                let ast = parser::parse_expr(&tokens, false);
                 match ast {
                     Ok(ast) => {
                         println!("-> {}", ast);

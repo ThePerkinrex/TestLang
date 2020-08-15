@@ -1,18 +1,21 @@
 use std::convert::TryFrom;
 
 use crate::ast;
-use crate::error::{ReturnValue, Error};
+use crate::error::{Error, ReturnValue};
 use crate::operators::Operator;
 use crate::span::{HasLoc, Span, SpanError};
 use crate::tokens::Token;
 
-pub fn parse_lines(tokens: Vec<Span<Token>>) -> Result<Vec<Span<ast::Item>>, Error> {
+pub fn parse_lines(
+	tokens: Vec<Span<Token>>,
+	intrinsics: bool,
+) -> Result<Vec<Span<ast::Item>>, Error> {
 	let mut i = 0;
 	let mut o = Vec::new();
 	while let Some(tok) = tokens.get(i) {
 		// println!("{:?}", tok.tok());
 		if matches!(tok.val(), Token::EOL) {
-			i+=1;
+			i += 1;
 		}
 		if matches!(tok.val(), Token::Ident(x) if x == String::from("fn")) {
 			i += 1;
@@ -116,10 +119,7 @@ pub fn parse_lines(tokens: Vec<Span<Token>>) -> Result<Vec<Span<ast::Item>>, Err
 				l.end.col += 1;
 				l.start = l.end;
 				let span = Span::new((), l);
-				return Err(span.error(
-					"Unexpected EOI, expected `(`",
-					ReturnValue::UnclosedParens,
-				));
+				return Err(span.error("Unexpected EOI, expected `(`", ReturnValue::UnclosedParens));
 			};
 			// println!("ARGS: {:?}", args);
 
@@ -145,7 +145,7 @@ pub fn parse_lines(tokens: Vec<Span<Token>>) -> Result<Vec<Span<ast::Item>>, Err
 					span.error("Unexpected EOI, expected `->`", ReturnValue::UnclosedParens)
 				);
 			};
-			let body = match match value::parse_block(&tokens, i) {
+			let body = match match value::parse_block(&tokens, i, intrinsics) {
 				Ok(v) => v,
 				Err(e) => return Err(e),
 			} {
@@ -221,9 +221,9 @@ fn parse_type(tokens: &[Span<Token>], index: usize) -> Result<(Span<ast::Type>, 
 }
 
 /// Parse an expression
-pub fn parse_expr(tokens: &[Span<Token>]) -> Result<Span<ast::Expr>, Error> {
+pub fn parse_expr(tokens: &[Span<Token>], intrinsics: bool) -> Result<Span<ast::Expr>, Error> {
 	let len = tokens.len();
-	match parse_expr_with_priority(&tokens, 0, 0) {
+	match parse_expr_with_priority(&tokens, 0, 0, intrinsics) {
 		Ok((v, offset)) => {
 			assert_eq!(offset, len, "Didn't parse all the tokens");
 			Ok(v)
@@ -236,9 +236,10 @@ fn parse_expr_with_priority(
 	tokens: &[Span<Token>],
 	index: usize,
 	priority: u8,
+	intrinsics: bool,
 ) -> Result<(Span<ast::Expr>, usize), Error> {
 	let mut offset = 0;
-	let mut rhs = match next_value(&tokens, index) {
+	let mut rhs = match next_value(&tokens, index, intrinsics) {
 		Ok(v) => v,
 		Err(e) => return Err(e),
 	};
@@ -250,7 +251,7 @@ fn parse_expr_with_priority(
 		}
 		offset += curr_op.1;
 		//println!("Index: {} + {} ({:?})", index, offset, curr_op.0);
-		let mut lhs = match next_value(&tokens, index + offset) {
+		let mut lhs = match next_value(&tokens, index + offset, intrinsics) {
 			Ok(v) => v,
 			Err(e) => return Err(e),
 		};
@@ -258,7 +259,7 @@ fn parse_expr_with_priority(
 		if let Some(next_op) = next_op(&tokens, index + offset) {
 			//dbg!(next_op);
 			if next_op.0.priority() > curr_op.0.priority() {
-				lhs = match parse_expr_with_priority(&tokens, index + offset, next_op.0.priority())
+				lhs = match parse_expr_with_priority(&tokens, index + offset, next_op.0.priority(), intrinsics)
 				{
 					Ok(v) => v,
 					Err(e) => return Err(e),
@@ -287,7 +288,7 @@ fn parse_expr_with_priority(
 			continue;
 		}
 		if curr_op.0.priority() > priority {
-			rhs = match parse_expr_with_priority(&tokens, index, curr_op.0.priority()) {
+			rhs = match parse_expr_with_priority(&tokens, index, curr_op.0.priority(), intrinsics) {
 				Ok(v) => v,
 				Err(e) => return Err(e),
 			};
@@ -329,7 +330,7 @@ mod value {
 
 	pub fn next_value(
 		tokens: &[Span<Token>],
-		index: usize,
+		index: usize, intrinsics: bool
 	) -> Result<(Span<ast::Expr>, usize), Error> {
 		//println!("VALUE: {:?}", tokens.get(index..));
 		let mut offset = 0;
@@ -356,7 +357,7 @@ mod value {
 				}
 				State::Central => {
 					//println!("Central: {:?}", &tokens.get(index + offset..));
-					if let Some((expr, off)) = match parse_block(&tokens, index + offset) {
+					if let Some((expr, off)) = match parse_block(&tokens, index + offset, intrinsics) {
 						Ok(v) => v,
 						Err(e) => return Err(e),
 					} {
@@ -400,7 +401,7 @@ mod value {
 							inner_tokens.push(tokens[index + offset].clone());
 							offset += 1;
 						}
-						central = Some(match super::parse_expr(&inner_tokens) {
+						central = Some(match super::parse_expr(&inner_tokens, intrinsics) {
 							Ok(v) => v,
 							Err(e) => return Err(e),
 						});
@@ -409,7 +410,13 @@ mod value {
 						central = Some(match tokens.get(index + offset) {
 							Some(v) => match v.val() {
 								Token::Number(n) => v.clone().map(ast::Expr::Num(n)),
-								Token::Ident(id) => v.clone().map(ast::Expr::Ident(id)),
+								Token::Ident(id) => if intrinsics && id.starts_with("INSTRINSIC_") {
+									if let Some(i) = ast::intrinsics::Intrinsic::from_str(&id) {
+										v.clone().map(ast::Expr::CompilerIntrinsic(i))
+									}else{
+										return Err(v.error("Intrinsic not defined", ReturnValue::IntrinsicNotDefined))
+									}
+								} else {v.clone().map(ast::Expr::Ident(id))},
 								Token::String(s) => v.clone().map(ast::Expr::Str(s)),
 
 								x => {
@@ -424,7 +431,6 @@ mod value {
 								l.end.col += 1;
 								l.start = l.end;
 								let span = Span::new((), l);
-								
 								return Err(span.error(
 									"Unexpected EOI, expected value",
 									ReturnValue::UnclosedParens,
@@ -475,7 +481,7 @@ mod value {
 						let i: Vec<Result<Span<ast::Expr>, Error>> = inner_tokens
 							.split(|x| x.val() == Token::Comma)
 							.filter(|x| !x.is_empty())
-							.map(|x| super::parse_expr(x.into()))
+							.map(|x| super::parse_expr(x.into(), intrinsics))
 							.collect();
 						let mut i_unwrapped = Vec::with_capacity(i.len());
 						for x in i {
@@ -503,9 +509,8 @@ mod value {
 
 	pub fn parse_block(
 		tokens: &[Span<Token>],
-		index: usize,
+		index: usize, intrinsics: bool
 	) -> Result<Option<(Span<ast::Expr>, usize)>, Error> {
-		
 		let mut offset = 0;
 		if matches!(tokens.get(index + offset).map(|x| x.val()), Some(Token::Kwd(x)) if x == "{") {
 			// println!("Parsing block: {:?}", &tokens[index..]);
@@ -551,10 +556,10 @@ mod value {
 				};
 
 				// println!("-> {:?}", next_tokens);
-				while let Some(Token::EOL) = next_tokens.get(inner_offset).map(|x|x.val()) {
+				while let Some(Token::EOL) = next_tokens.get(inner_offset).map(|x| x.val()) {
 					inner_offset += 1;
 				}
-				let (expr, i) = match parse_expr_with_priority(next_tokens, inner_offset, 0) {
+				let (expr, i) = match parse_expr_with_priority(next_tokens, inner_offset, 0, intrinsics) {
 					Ok(v) => v,
 					Err(e) => return Err(e),
 				};

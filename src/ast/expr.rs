@@ -1,10 +1,11 @@
-use crate::span::Span;
 use crate::operators::Operator;
 use crate::scope::Scope;
+use crate::span::Span;
 
-use super::{Ident, Block};
-use super::types::{HasType, Type, TypeError};
+use super::intrinsics::Intrinsic;
 use super::traits::Trait;
+use super::types::{HasType, Type, TypeError};
+use super::{Block, Ident};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
@@ -28,7 +29,7 @@ pub enum Expr {
 	Return(Box<Span<Expr>>),
 	Define(Ident, Box<Span<Expr>>),
 	DefineMut(Ident, Box<Span<Expr>>),
-	//FnDefine(Ident, Vec<(Ident, Type)>, Type, Block),
+	CompilerIntrinsic(Intrinsic),
 	None,
 }
 
@@ -50,6 +51,10 @@ impl<T: Clone> HasType<T> for Span<Expr> {
 			Expr::Define(_, _) => Type::Void,
 			Expr::DefineMut(_, _) => Type::Void,
 			Expr::Return(_) => Type::Void,
+			Expr::CompilerIntrinsic(i) => match i.get_type(scope) {
+				Ok(v) => v,
+				Err(e) => return Err(e),
+			},
 			Expr::Str(_) => Type::String,
 			Expr::Num(_) => Type::Number,
 			Expr::Ident(id) => {
@@ -259,6 +264,7 @@ impl std::fmt::Display for Expr {
 			Self::Define(id, expr) => write!(f, "let {} = {};", id, expr),
 			Self::DefineMut(id, expr) => write!(f, "let mut {} = {};", id, expr),
 			Self::Return(e) => write!(f, "return {}", e),
+			Self::CompilerIntrinsic(i) => write!(f, "INTRINSIC#{:?}#", i),
 			Self::None => write!(f, ""),
 		}
 	}

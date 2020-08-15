@@ -1,0 +1,3 @@
+fn print(s: string) -> void {
+	INTRINSIC_PRINT;
+}

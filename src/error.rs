@@ -22,6 +22,7 @@ pub enum ReturnValue {
 	TraitNotImplemented,
 	BrnchRetTypesDontMatch,
 	IdentNotDefined,
+	IntrinsicNotDefined
 }
 
 impl Into<i32> for ReturnValue {
