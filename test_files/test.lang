@@ -1,0 +1,12 @@
+fn main() -> void {
+	hola(1);
+	1 + 1;
+	adios_(2, 3);
+}
+fn hola(n: number) -> void {
+	1 + n;
+}
+
+fn adios(n: number, m: number) -> number {
+	n + m
+}
