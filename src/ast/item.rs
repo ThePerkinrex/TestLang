@@ -18,7 +18,7 @@ impl Item {
 	pub fn get_type(&self) -> Type {
 		match self {
 			Self::Fn(_, args, ret, _) => Type::Fn(
-				args.iter().map(|(_, x)| x.clone()).collect(),
+				args.clone(),
 				Box::new(ret.clone()),
 			),
 		}

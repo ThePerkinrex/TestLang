@@ -8,7 +8,10 @@ mod expr;
 pub use expr::*;
 mod item;
 pub use item::*;
+mod value;
+pub use value::*;
+
 pub mod intrinsics;
 
-type Block = Vec<Span<Expr>>;
+pub type Block = Vec<Span<Expr>>;
 pub type Ident = String;

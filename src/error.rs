@@ -1,6 +1,7 @@
 use crate::color::{color, colorln};
 use crate::file_provider::{FileProvider, FileReader};
 use crate::span::location::Location;
+use crate::span::Span;
 
 use termcolor::{BufferWriter, Color, ColorChoice, ColorSpec, WriteColor};
 
@@ -17,12 +18,14 @@ pub enum ReturnValue {
 	UnexpectedType,
 	ExpectedReturnKwd,
 	NoMain,
+	MainHasArguments,
+	MainNonVoidRetType,
 	NameDefined,
 	TypesDontMatch,
 	TraitNotImplemented,
 	BrnchRetTypesDontMatch,
 	IdentNotDefined,
-	IntrinsicNotDefined
+	IntrinsicNotDefined,
 }
 
 impl Into<i32> for ReturnValue {
@@ -69,6 +72,10 @@ impl Error {
 	pub fn note<T: ToString>(mut self, n: T) -> Self {
 		self.notes.push(n.to_string());
 		self
+	}
+
+	pub fn span<T: Clone>(self, v: T) -> Span<T> {
+		Span::new(v, self.loc)
 	}
 
 	pub fn default_display<FProv: FileProvider<T>, T: FileReader>(

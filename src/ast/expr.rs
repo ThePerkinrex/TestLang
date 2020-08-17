@@ -1,16 +1,17 @@
 use crate::operators::Operator;
 use crate::scope::Scope;
 use crate::span::Span;
+use crate::error::Error;
 
 use super::intrinsics::Intrinsic;
 use super::traits::Trait;
 use super::types::{HasType, Type, TypeError};
+use super::value::Value;
 use super::{Block, Ident};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
-	Num(f64),
-	Str(String),
+	Value(Value),
 	Ident(Ident),
 	Call(Box<Span<Expr>>, Vec<Span<Expr>>),
 	Neg(Box<Span<Expr>>),
@@ -20,12 +21,12 @@ pub enum Expr {
 	Div(Box<Span<Expr>>, Box<Span<Expr>>),
 	Exp(Box<Span<Expr>>, Box<Span<Expr>>),
 	Block(Block),
-	If(
-		Box<Span<Expr>>,
-		Box<Span<Expr>>,
-		Vec<(Span<Expr>, Span<Expr>)>,
-		Option<Box<Span<Expr>>>,
-	),
+	// If(
+	// 	Box<Span<Expr>>,
+	// 	Box<Span<Expr>>,
+	// 	Vec<(Span<Expr>, Span<Expr>)>,
+	// 	Option<Box<Span<Expr>>>,
+	// ),
 	Return(Box<Span<Expr>>),
 	Define(Ident, Box<Span<Expr>>),
 	DefineMut(Ident, Box<Span<Expr>>),
@@ -46,17 +47,19 @@ impl Expr {
 }
 
 impl<T: Clone> HasType<T> for Span<Expr> {
-	fn get_type(&self, scope: &Scope<T>) -> Result<Type, Span<TypeError>> {
+	fn get_type_with_call_cb<F: FnMut(&Span<Expr>) -> Result<(), Error>>(&self, scope: &Scope<T>, f: &mut F) -> Result<Type, Span<TypeError>> {
 		Ok(match self.as_ref() {
 			Expr::Define(_, _) => Type::Void,
 			Expr::DefineMut(_, _) => Type::Void,
-			Expr::Return(_) => Type::Void,
-			Expr::CompilerIntrinsic(i) => match i.get_type(scope) {
+			Expr::Return(_) => Type::Never,
+			Expr::CompilerIntrinsic(i) => match i.get_type_with_call_cb(scope, f) {
 				Ok(v) => v,
 				Err(e) => return Err(e),
 			},
-			Expr::Str(_) => Type::String,
-			Expr::Num(_) => Type::Number,
+			Expr::Value(v) => match v.get_type_with_call_cb(scope, f) {
+				Ok(v) => v,
+				Err(e) => return Err(e),
+			}
 			Expr::Ident(id) => {
 				if let Ok(t) = scope.get_type(id) {
 					t.clone().unwrap()
@@ -65,7 +68,7 @@ impl<T: Clone> HasType<T> for Span<Expr> {
 				}
 			}
 			Expr::Neg(expr) => {
-				let expr_type = match expr.get_type(scope) {
+				let expr_type = match expr.get_type_with_call_cb(scope, f) {
 					Ok(v) => v,
 					Err(e) => return Err(e),
 				};
@@ -79,11 +82,11 @@ impl<T: Clone> HasType<T> for Span<Expr> {
 					.map(TypeError::TraitNotImplemented(Trait::Neg(Type::Err))));
 			}
 			Expr::Add(rhs, lhs) => {
-				let rhs_type = match rhs.get_type(scope) {
+				let rhs_type = match rhs.get_type_with_call_cb(scope, f) {
 					Ok(v) => v,
 					Err(e) => return Err(e),
 				};
-				let lhs_type = match lhs.get_type(scope) {
+				let lhs_type = match lhs.get_type_with_call_cb(scope, f) {
 					Ok(v) => v,
 					Err(e) => return Err(e),
 				};
@@ -100,11 +103,11 @@ impl<T: Clone> HasType<T> for Span<Expr> {
 				))));
 			}
 			Expr::Sub(rhs, lhs) => {
-				let rhs_type = match rhs.get_type(scope) {
+				let rhs_type = match rhs.get_type_with_call_cb(scope, f) {
 					Ok(v) => v,
 					Err(e) => return Err(e),
 				};
-				let lhs_type = match lhs.get_type(scope) {
+				let lhs_type = match lhs.get_type_with_call_cb(scope, f) {
 					Ok(v) => v,
 					Err(e) => return Err(e),
 				};
@@ -121,11 +124,11 @@ impl<T: Clone> HasType<T> for Span<Expr> {
 				))));
 			}
 			Expr::Mul(rhs, lhs) => {
-				let rhs_type = match rhs.get_type(scope) {
+				let rhs_type = match rhs.get_type_with_call_cb(scope, f) {
 					Ok(v) => v,
 					Err(e) => return Err(e),
 				};
-				let lhs_type = match lhs.get_type(scope) {
+				let lhs_type = match lhs.get_type_with_call_cb(scope, f) {
 					Ok(v) => v,
 					Err(e) => return Err(e),
 				};
@@ -142,11 +145,11 @@ impl<T: Clone> HasType<T> for Span<Expr> {
 				))));
 			}
 			Expr::Div(rhs, lhs) => {
-				let rhs_type = match rhs.get_type(scope) {
+				let rhs_type = match rhs.get_type_with_call_cb(scope, f) {
 					Ok(v) => v,
 					Err(e) => return Err(e),
 				};
-				let lhs_type = match lhs.get_type(scope) {
+				let lhs_type = match lhs.get_type_with_call_cb(scope, f) {
 					Ok(v) => v,
 					Err(e) => return Err(e),
 				};
@@ -163,11 +166,11 @@ impl<T: Clone> HasType<T> for Span<Expr> {
 				))));
 			}
 			Expr::Exp(rhs, lhs) => {
-				let rhs_type = match rhs.get_type(scope) {
+				let rhs_type = match rhs.get_type_with_call_cb(scope, f) {
 					Ok(v) => v,
 					Err(e) => return Err(e),
 				};
-				let lhs_type = match lhs.get_type(scope) {
+				let lhs_type = match lhs.get_type_with_call_cb(scope, f) {
 					Ok(v) => v,
 					Err(e) => return Err(e),
 				};
@@ -184,13 +187,16 @@ impl<T: Clone> HasType<T> for Span<Expr> {
 				))));
 			}
 			Expr::Call(callee, args) => {
-				let callee_type = match callee.get_type(scope) {
+				if let Err(e) = f(&callee) {
+					return Err(e.clone().span(TypeError::Err(e)))
+				}
+				let callee_type = match callee.get_type_with_call_cb(scope, f) {
 					Ok(v) => v,
 					Err(e) => return Err(e),
 				};
 				let mut args_types = Vec::new();
 				for x in args {
-					args_types.push(match x.get_type(scope) {
+					args_types.push(match x.get_type_with_call_cb(scope, f) {
 						Ok(v) => v,
 						Err(e) => return Err(e),
 					})
@@ -212,12 +218,12 @@ impl<T: Clone> HasType<T> for Span<Expr> {
 			Expr::Block(e) => {
 				for expr in e {
 					if let Expr::Return(expr) = expr.val() {
-						return expr.get_type(scope);
+						return expr.get_type_with_call_cb(scope, f);
 					}
 				}
 				Type::Void
 			}
-			Expr::If(_, _, _, _) => todo!(),
+			// Expr::If(_, _, _, _) => todo!(),
 			Expr::None => Type::Void,
 		})
 	}
@@ -231,8 +237,7 @@ impl std::fmt::Display for Expr {
 			Self::Mul(rhs, lhs) => write!(f, "({} * {})", rhs, lhs),
 			Self::Div(rhs, lhs) => write!(f, "({} / {})", rhs, lhs),
 			Self::Exp(rhs, lhs) => write!(f, "({} ** {})", rhs, lhs),
-			Self::Num(n) => write!(f, "{}", n),
-			Self::Str(s) => write!(f, "\"{}\"", s),
+			Self::Value(v) => write!(f, "{}", v),
 			Self::Ident(name) => write!(f, "{}", name),
 			Self::Call(body, args) => write!(
 				f,
@@ -251,16 +256,16 @@ impl std::fmt::Display for Expr {
 					.map(|x| format!("{};\n", x))
 					.fold(String::new(), |x, s| s + &x)
 			),
-			Self::If(condition, val, elifs, el) => {
-				write!(f, "if {} {}", condition, val)?;
-				for (cond, v) in elifs {
-					write!(f, " else if {} {}", cond, v)?;
-				}
-				if let Some(v) = el {
-					write!(f, " else {}", v)?;
-				}
-				write!(f, "")
-			}
+			// Self::If(condition, val, elifs, el) => {
+			// 	write!(f, "if {} {}", condition, val)?;
+			// 	for (cond, v) in elifs {
+			// 		write!(f, " else if {} {}", cond, v)?;
+			// 	}
+			// 	if let Some(v) = el {
+			// 		write!(f, " else {}", v)?;
+			// 	}
+			// 	write!(f, "")
+			// }
 			Self::Define(id, expr) => write!(f, "let {} = {};", id, expr),
 			Self::DefineMut(id, expr) => write!(f, "let mut {} = {};", id, expr),
 			Self::Return(e) => write!(f, "return {}", e),

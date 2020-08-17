@@ -31,6 +31,10 @@ where
 		self.v.clone()
 	}
 
+	pub fn unwrap(self) -> T {
+		self.v
+	}
+
 	pub fn join_with<U>(self, other: &[Span<T>], line: U) -> Span<U>
 	where
 		U: Clone,
@@ -128,6 +132,12 @@ impl std::fmt::Display for Span<ast::Type> {
 }
 
 impl std::fmt::Debug for Span<ast::Type> {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
+		write!(f, "{:?}", self.v)
+	}
+}
+
+impl std::fmt::Debug for Span<ast::TypeError> {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
 		write!(f, "{:?}", self.v)
 	}
