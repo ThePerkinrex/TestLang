@@ -1,27 +1,27 @@
-use crate::scope::Scope;
+use crate::scope::{Scope, TypeDB};
 use crate::span::Span;
 use crate::error::Error;
 
-use super::types::{HasType, Type, TypeError};
+use super::types::{HasType, TypeData, TypeError};
 use super::expr::Expr;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
 	Num(f64),
 	Str(String),
-	Fn(Type, Box<Expr>),
+	Fn(TypeData, Box<Expr>),
 	Never,
 	Void,
 }
 
 impl<T: Clone> HasType<T> for Value {
-	fn get_type_with_call_cb<F: FnMut(&Span<super::expr::Expr>) -> Result<(), Error>>(&self, _: &Scope<T>, _: &mut F) -> Result<Type, Span<TypeError>> {
+	fn get_type_with_call_cb<F: FnMut(&Span<super::expr::Expr>) -> Result<(), Error>>(&self, _: &Scope<T>, _:&mut TypeDB, _: &mut F) -> Result<TypeData, Span<TypeError>> {
 		Ok(match self {
-			Self::Num(_) => Type::Number,
-			Self::Str(_) => Type::String,
+			Self::Num(_) => TypeData::Number,
+			Self::Str(_) => TypeData::String,
 			Self::Fn(t, _) => t.clone(),
-			Self::Never => Type::Never,
-			Self::Void => Type::Void,
+			Self::Never => TypeData::Never,
+			Self::Void => TypeData::Void,
 		})
 	}
 }

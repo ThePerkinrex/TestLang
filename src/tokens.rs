@@ -51,7 +51,7 @@ pub fn tokenize<FProv: FileProvider<File>, File: FileReader>(file: &str, fprov: 
 					Token::Ident(name.clone()),
 					file,
 					*start,
-					line_col(line, i),
+					line_col(line, &(i-1)),
 				));
 				state = State::Normal;
 			} else if matches!(state, State::Normal) {

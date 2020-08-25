@@ -1,26 +1,28 @@
 use crate::span::Span;
 
-use super::types::Type;
 use super::expr::Expr;
+use super::types::{FnSignature, ImplTrait, Trait, TypeData};
 use super::Ident;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Item {
 	Fn(
 		Span<Ident>,
-		Vec<(Span<Ident>, Span<Type>)>,
-		Span<Type>,
+		Vec<(Span<Ident>, Span<TypeData>)>,
+		Span<TypeData>,
 		Span<Expr>,
 	),
+	TraitDef(Span<Ident>, Trait),
+	ImplTrait(Span<TypeData>, ImplTrait),
 }
 
 impl Item {
-	pub fn get_type(&self) -> Type {
+	pub fn get_type(&self) -> Option<TypeData> {
 		match self {
-			Self::Fn(_, args, ret, _) => Type::Fn(
-				args.clone(),
-				Box::new(ret.clone()),
-			),
+			Self::Fn(_, args, ret, _) => {
+				Some(TypeData::Fn(FnSignature(args.clone(), Box::new(ret.clone()))))
+			},
+			_ => None
 		}
 	}
 }
@@ -39,6 +41,8 @@ impl std::fmt::Display for Item {
 				return_type,
 				body
 			),
+			Self::TraitDef(_, t) => write!(f, "{}", t),
+			Self::ImplTrait(t, impl_trait) => write!(f, "impl {} for {}", impl_trait, t)
 		}
 	}
 }

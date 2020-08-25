@@ -1,11 +1,10 @@
-use crate::operators::Operator;
-use crate::scope::Scope;
-use crate::span::Span;
 use crate::error::Error;
+use crate::operators::Operator;
+use crate::scope::{Scope, TypeDB};
+use crate::span::Span;
 
 use super::intrinsics::Intrinsic;
-use super::traits::Trait;
-use super::types::{HasType, Type, TypeError};
+use super::types::{HasType, TypeData, TypeError};
 use super::value::Value;
 use super::{Block, Ident};
 
@@ -47,19 +46,24 @@ impl Expr {
 }
 
 impl<T: Clone> HasType<T> for Span<Expr> {
-	fn get_type_with_call_cb<F: FnMut(&Span<Expr>) -> Result<(), Error>>(&self, scope: &Scope<T>, f: &mut F) -> Result<Type, Span<TypeError>> {
+	fn get_type_with_call_cb<F: FnMut(&Span<Expr>) -> Result<(), Error>>(
+		&self,
+		scope: &Scope<T>,
+		type_db: &mut TypeDB,
+		f: &mut F,
+	) -> Result<TypeData, Span<TypeError>> {
 		Ok(match self.as_ref() {
-			Expr::Define(_, _) => Type::Void,
-			Expr::DefineMut(_, _) => Type::Void,
-			Expr::Return(_) => Type::Never,
-			Expr::CompilerIntrinsic(i) => match i.get_type_with_call_cb(scope, f) {
+			Expr::Define(_, _) => TypeData::Void,
+			Expr::DefineMut(_, _) => TypeData::Void,
+			Expr::Return(_) => TypeData::Never,
+			Expr::CompilerIntrinsic(i) => match i.get_type_with_call_cb(scope, type_db, f) {
 				Ok(v) => v,
 				Err(e) => return Err(e),
 			},
-			Expr::Value(v) => match v.get_type_with_call_cb(scope, f) {
+			Expr::Value(v) => match v.get_type_with_call_cb(scope, type_db, f) {
 				Ok(v) => v,
 				Err(e) => return Err(e),
-			}
+			},
 			Expr::Ident(id) => {
 				if let Ok(t) = scope.get_type(id) {
 					t.clone().unwrap()
@@ -68,163 +72,151 @@ impl<T: Clone> HasType<T> for Span<Expr> {
 				}
 			}
 			Expr::Neg(expr) => {
-				let expr_type = match expr.get_type_with_call_cb(scope, f) {
+				let expr_type = match expr.get_type_with_call_cb(scope, type_db, f) {
 					Ok(v) => v,
 					Err(e) => return Err(e),
 				};
-				for t in expr_type.get_traits() {
-					if let Trait::Neg(t) = t {
-						return Ok(t);
-					}
+				if let Some(trait_impl) = type_db.get(&expr_type).get_impl_trait("Neg", &[]) {
+					let t = trait_impl.get_typedef("Output").unwrap();
+					return Ok(t.type_data().clone());
 				}
-				return Err(self
-					.clone()
-					.map(TypeError::TraitNotImplemented(Trait::Neg(Type::Err))));
+				return Err(self.clone().map(TypeError::TraitNotImplemented("Neg".into(), vec![], expr_type)));
 			}
 			Expr::Add(rhs, lhs) => {
-				let rhs_type = match rhs.get_type_with_call_cb(scope, f) {
+				let rhs_type = match rhs.get_type_with_call_cb(scope, type_db, f) {
 					Ok(v) => v,
 					Err(e) => return Err(e),
 				};
-				let lhs_type = match lhs.get_type_with_call_cb(scope, f) {
+				let lhs_type = match lhs.get_type_with_call_cb(scope, type_db, f) {
 					Ok(v) => v,
 					Err(e) => return Err(e),
 				};
-				for t in rhs_type.get_traits() {
-					if let Trait::Add(lhs_required_type, ret_type) = t {
-						if lhs_required_type == lhs_type {
-							return Ok(ret_type);
-						}
-					}
+				if let Some(trait_impl) = type_db.get(&rhs_type).get_impl_trait("Add", &[&type_db.get(&lhs_type)]) {
+					let t = trait_impl.get_typedef("Output").unwrap();
+					return Ok(t.type_data().clone());
 				}
-				return Err(rhs.clone().map(TypeError::TraitNotImplemented(Trait::Add(
-					lhs_type,
-					Type::Err,
-				))));
+				return Err(rhs
+					.clone()
+					.map(TypeError::TraitNotImplemented("Add".into(), vec![type_db.get(&lhs_type)], rhs_type)));
 			}
 			Expr::Sub(rhs, lhs) => {
-				let rhs_type = match rhs.get_type_with_call_cb(scope, f) {
+				let rhs_type = match rhs.get_type_with_call_cb(scope, type_db, f) {
 					Ok(v) => v,
 					Err(e) => return Err(e),
 				};
-				let lhs_type = match lhs.get_type_with_call_cb(scope, f) {
+				let lhs_type = match lhs.get_type_with_call_cb(scope, type_db, f) {
 					Ok(v) => v,
 					Err(e) => return Err(e),
 				};
-				for t in rhs_type.get_traits() {
-					if let Trait::Sub(lhs_required_type, ret_type) = t {
-						if lhs_required_type == lhs_type {
-							return Ok(ret_type);
-						}
-					}
+				if let Some(trait_impl) = type_db.get(&rhs_type).get_impl_trait("Sub", &[&type_db.get(&lhs_type)]) {
+					let t = trait_impl.get_typedef("Output").unwrap();
+					return Ok(t.type_data().clone());
 				}
-				return Err(rhs.clone().map(TypeError::TraitNotImplemented(Trait::Sub(
-					lhs_type,
-					Type::Err,
-				))));
+				return Err(rhs
+					.clone()
+					.map(TypeError::TraitNotImplemented("Sub".into(), vec![type_db.get(&lhs_type)], rhs_type)));
 			}
 			Expr::Mul(rhs, lhs) => {
-				let rhs_type = match rhs.get_type_with_call_cb(scope, f) {
+				let rhs_type = match rhs.get_type_with_call_cb(scope, type_db, f) {
 					Ok(v) => v,
 					Err(e) => return Err(e),
 				};
-				let lhs_type = match lhs.get_type_with_call_cb(scope, f) {
+				let lhs_type = match lhs.get_type_with_call_cb(scope, type_db, f) {
 					Ok(v) => v,
 					Err(e) => return Err(e),
 				};
-				for t in rhs_type.get_traits() {
-					if let Trait::Mul(lhs_required_type, ret_type) = t {
-						if lhs_required_type == lhs_type {
-							return Ok(ret_type);
-						}
-					}
+				if let Some(trait_impl) = type_db.get(&rhs_type).get_impl_trait("Mul", &[&type_db.get(&lhs_type)]) {
+					let t = trait_impl.get_typedef("Output").unwrap();
+					return Ok(t.type_data().clone());
 				}
-				return Err(rhs.clone().map(TypeError::TraitNotImplemented(Trait::Mul(
-					lhs_type,
-					Type::Err,
-				))));
+				return Err(rhs
+					.clone()
+					.map(TypeError::TraitNotImplemented("Mul".into(), vec![type_db.get(&lhs_type)], rhs_type)));
 			}
 			Expr::Div(rhs, lhs) => {
-				let rhs_type = match rhs.get_type_with_call_cb(scope, f) {
+				let rhs_type = match rhs.get_type_with_call_cb(scope, type_db, f) {
 					Ok(v) => v,
 					Err(e) => return Err(e),
 				};
-				let lhs_type = match lhs.get_type_with_call_cb(scope, f) {
+				let lhs_type = match lhs.get_type_with_call_cb(scope, type_db, f) {
 					Ok(v) => v,
 					Err(e) => return Err(e),
 				};
-				for t in rhs_type.get_traits() {
-					if let Trait::Div(lhs_required_type, ret_type) = t {
-						if lhs_required_type == lhs_type {
-							return Ok(ret_type);
-						}
-					}
+				if let Some(trait_impl) = type_db.get(&rhs_type).get_impl_trait("Div", &[&type_db.get(&lhs_type)]) {
+					let t = trait_impl.get_typedef("Output").unwrap();
+					return Ok(t.type_data().clone());
 				}
-				return Err(rhs.clone().map(TypeError::TraitNotImplemented(Trait::Div(
-					lhs_type,
-					Type::Err,
-				))));
+				return Err(rhs
+					.clone()
+					.map(TypeError::TraitNotImplemented("Div".into(), vec![type_db.get(&lhs_type)], rhs_type)));
 			}
 			Expr::Exp(rhs, lhs) => {
-				let rhs_type = match rhs.get_type_with_call_cb(scope, f) {
+				let rhs_type = match rhs.get_type_with_call_cb(scope, type_db, f) {
 					Ok(v) => v,
 					Err(e) => return Err(e),
 				};
-				let lhs_type = match lhs.get_type_with_call_cb(scope, f) {
+				let lhs_type = match lhs.get_type_with_call_cb(scope, type_db, f) {
 					Ok(v) => v,
 					Err(e) => return Err(e),
 				};
-				for t in rhs_type.get_traits() {
-					if let Trait::Exp(lhs_required_type, ret_type) = t {
-						if lhs_required_type == lhs_type {
-							return Ok(ret_type);
-						}
-					}
+				if let Some(trait_impl) = type_db.get(&rhs_type).get_impl_trait("Exp", &[&type_db.get(&lhs_type)]) {
+					let t = trait_impl.get_typedef("Output").unwrap();
+					return Ok(t.type_data().clone());
 				}
-				return Err(rhs.clone().map(TypeError::TraitNotImplemented(Trait::Exp(
-					lhs_type,
-					Type::Err,
-				))));
+				return Err(rhs
+					.clone()
+					.map(TypeError::TraitNotImplemented("Exp".into(), vec![type_db.get(&lhs_type)], rhs_type)));
 			}
 			Expr::Call(callee, args) => {
 				if let Err(e) = f(&callee) {
-					return Err(e.clone().span(TypeError::Err(e)))
+					return Err(e.clone().span(TypeError::Err(e)));
 				}
-				let callee_type = match callee.get_type_with_call_cb(scope, f) {
+				let callee_type = match callee.get_type_with_call_cb(scope, type_db, f) {
 					Ok(v) => v,
 					Err(e) => return Err(e),
 				};
 				let mut args_types = Vec::new();
 				for x in args {
-					args_types.push(match x.get_type_with_call_cb(scope, f) {
+					args_types.push(match x.get_type_with_call_cb(scope, type_db, f) {
 						Ok(v) => v,
 						Err(e) => return Err(e),
 					})
 				}
-				for t in callee_type.get_traits() {
-					if let Trait::Call(a, t) = t {
-						if a == args_types {
-							return Ok(t);
-						}
+				//println!("Checking if {} is fn", callee_type);
+				if let TypeData::Fn(fn_sign) = callee_type.clone() {
+					if fn_sign.matches_args(&args_types) {
+						//println!("{} is fn that matches argtypes", callee_type);
+						return Ok(fn_sign.1.val());
+					} else {
+						return Err(callee.clone().map(TypeError::TraitNotImplemented(
+							"Call".into(),
+							vec![fn_sign.args_types_tuple()], callee_type
+						)));
 					}
 				}
-				return Err(callee
-					.clone()
-					.map(TypeError::TraitNotImplemented(Trait::Call(
-						args_types,
-						Type::Err,
-					))));
+				let args_tuple = TypeData::Tuple(args_types).default_type();
+				if let Some(trait_impl) = type_db.get(&callee_type)
+					.get_impl_trait("Call", &[&args_tuple])
+				{
+					let t = trait_impl.get_typedef("Output").unwrap();
+					return Ok(t.type_data().clone());
+				}
+				return Err(callee.clone().map(TypeError::TraitNotImplemented(
+					"Call".into(),
+					vec![args_tuple],
+					callee_type
+				)));
 			}
 			Expr::Block(e) => {
 				for expr in e {
 					if let Expr::Return(expr) = expr.val() {
-						return expr.get_type_with_call_cb(scope, f);
+						return expr.get_type_with_call_cb(scope, type_db, f);
 					}
 				}
-				Type::Void
+				TypeData::Void
 			}
 			// Expr::If(_, _, _, _) => todo!(),
-			Expr::None => Type::Void,
+			Expr::None => TypeData::Void,
 		})
 	}
 }

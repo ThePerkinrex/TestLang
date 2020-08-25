@@ -1,7 +1,4 @@
 fn main() {
-	hola(1);
-	1 + 1;
-	adios(2, 3);
 	print("hola");
 }
 fn hola(n: number) -> void {

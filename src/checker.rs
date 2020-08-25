@@ -1,31 +1,31 @@
-use crate::ast::{Expr, HasType, Item, Type, TypeError};
+use crate::ast::{Expr, FnSignature, HasType, Ident, Item, Trait, TypeData, TypeError};
 use crate::error::Error;
 use crate::error::ReturnValue;
 use crate::file_provider::fs::FileProvider;
-use crate::scope::{self, Scope};
+use crate::scope::{self, Scope, TypeDB};
 use crate::span::{Span, SpanError};
 
+use std::collections::HashMap;
 use std::path::Path;
 
-pub fn check(items_slice: &[Span<Item>]) -> Result<(), Error> {
-	let mut scope = match load_scope() {
+pub type TraitDB = HashMap<Ident, Trait>;
+
+pub fn check(items_slice: &[Span<Item>], type_db: &mut TypeDB) -> Result<(), Error> {
+	let mut trait_db = TraitDB::new();
+	let mut scope = match load_scope(type_db, &mut trait_db) {
 		Ok(v) => v,
-		Err(e) => return Err(e)
+		Err(e) => return Err(e),
 	};
-	for item in items_slice {
-		match item.as_ref() {
-			Item::Fn(name, _, _, _) => scope.add_variable(
-				name.val(),
-				scope::Type::NoMut(item.as_ref().get_type()),
-				Some((item.clone(), false)),
-			),
-		}
-		.expect("Error adding item");
-	}
-	if let Ok(scope::Type::NoMut(Type::Fn(args, ret))) = scope.get_type(&String::from("main")) {
+	load_items(items_slice, &mut scope, type_db, &mut trait_db);
+	println!("Loaded items, checking main");
+	if let Ok(TypeData::Fn(FnSignature(args, ret))) = scope
+		.get_type(&String::from("main"))
+		.map(|x| x.unwrap_ref())
+	{
 		if args.is_empty() {
-			if ret.as_ref().as_ref() == &Type::Void {
-				let res = check_item(&String::from("main"), &mut scope).unwrap();
+			if ret.as_ref().as_ref() == &TypeData::Void {
+				println!("main found");
+				let res = check_item(&String::from("main"), &mut scope, type_db).unwrap();
 				println!(
 					"{}",
 					scope.map(&|x| {
@@ -44,7 +44,10 @@ pub fn check(items_slice: &[Span<Item>]) -> Result<(), Error> {
 				));
 			}
 		} else {
-			let spans = args.iter().map(|(_, x)| x.clone()).collect::<Vec<Span<Type>>>();
+			let spans = args
+				.iter()
+				.map(|(_, x)| x.clone())
+				.collect::<Vec<Span<TypeData>>>();
 			return Err(Span::join(&spans, ()).error(
 				"Main fubction shouldn't have arguments",
 				ReturnValue::MainHasArguments,
@@ -58,9 +61,12 @@ pub fn check(items_slice: &[Span<Item>]) -> Result<(), Error> {
 	}
 }
 
-pub fn load_scope() -> Result<Scope<Option<(Span<Item>, bool)>>, Error> {
+pub fn load_scope(
+	type_db: &mut TypeDB,
+	trait_db: &mut TraitDB,
+) -> Result<Scope<Option<(Span<Item>, bool)>>, Error> {
 	let mut scope = Scope::root();
-	if let Err(e) = load_std(&mut scope, "") {
+	if let Err(e) = load_std(&mut scope, type_db, trait_db, "") {
 		return Err(e);
 	}
 	Ok(scope)
@@ -69,6 +75,7 @@ pub fn load_scope() -> Result<Scope<Option<(Span<Item>, bool)>>, Error> {
 fn check_item(
 	variable: &String,
 	scope: &mut Scope<Option<(Span<Item>, bool)>>,
+	type_db: &mut TypeDB,
 ) -> Option<Result<(), Error>> {
 	if let Ok(Some((main, checked))) = scope.get_value(variable) {
 		if *checked {
@@ -77,7 +84,7 @@ fn check_item(
 			let main = main.clone();
 			scope
 				.set_value(variable, Some((main.clone(), true)))
-				.expect("Item cant be checked");
+				.expect("Item cant be checked off");
 			match main.val() {
 				Item::Fn(_, args, ret, block) => {
 					*scope = scope.clone().push();
@@ -92,7 +99,7 @@ fn check_item(
 							));
 						}
 					}
-					let ret_block = match block.get_type(&scope) {
+					let ret_block = match block.get_type(&scope, type_db) {
 						Ok(v) => v,
 						Err(e) => panic!("{:?}", e.as_ref()),
 					};
@@ -102,10 +109,13 @@ fn check_item(
 							ReturnValue::TypesDontMatch,
 						)));
 					}
-					let res = check_expr(&block, scope);
+					println!("Check item's block");
+					let res = check_expr(&block, scope, type_db);
 					*scope = scope.clone().pop();
 					Some(res)
 				}
+
+				_ => todo!(),
 			}
 		}
 	} else {
@@ -117,12 +127,16 @@ fn check_item(
 pub fn check_expr(
 	expr: &Span<Expr>,
 	scope: &mut Scope<Option<(Span<Item>, bool)>>,
+	type_db: &mut TypeDB,
 ) -> Result<(), Error> {
+	println!("Checking expr: {}", expr);
 	match expr.as_ref() {
 		Expr::Block(b) => {
 			*scope = scope.clone().push();
-			for e in b {
-				if let Err(e) = check_expr(e, scope) {
+			let mut reversed_block = b.clone();
+			reversed_block.reverse();
+			for e in &reversed_block {
+				if let Err(e) = check_expr(e, scope, type_db) {
 					return Err(e);
 				}
 			}
@@ -130,7 +144,7 @@ pub fn check_expr(
 			Ok(())
 		}
 		Expr::Define(id, expr) => {
-			let typ = match expr.get_type(scope) {
+			let typ = match expr.get_type(scope, type_db) {
 				Ok(v) => v,
 				Err(t) => return Err(get_type_error(t)),
 			};
@@ -140,7 +154,7 @@ pub fn check_expr(
 			Ok(())
 		}
 		Expr::DefineMut(id, expr) => {
-			let typ = match expr.get_type(scope) {
+			let typ = match expr.get_type(scope, type_db) {
 				Ok(v) => v,
 				Err(t) => return Err(get_type_error(t)),
 			};
@@ -150,10 +164,10 @@ pub fn check_expr(
 			Ok(())
 		}
 		_ => {
-			match expr.get_type_with_call_cb(&scope.clone(), &mut |e| {
+			match expr.get_type_with_call_cb(&scope.clone(), &mut type_db.clone(), &mut |e| {
 				if let Expr::Ident(id) = e.as_ref() {
-					println!("ID: {}", id);
-					if let Some(Err(e)) = check_item(id, scope) {
+					// println!("ID: {}", id);
+					if let Some(Err(e)) = check_item(id, scope, type_db) {
 						return Err(e);
 					}
 				}
@@ -168,8 +182,17 @@ pub fn check_expr(
 
 fn get_type_error(t: Span<TypeError>) -> Error {
 	match t.as_ref() {
-		TypeError::TraitNotImplemented(tr) => t.error(
-			format!("Trait {:?} not implemented", tr),
+		TypeError::TraitNotImplemented(name, defining_types, for_type) => t.error(
+			format!(
+				"Trait `{}<{}>` not implemented for type `{}`",
+				name,
+				defining_types
+					.iter()
+					.map(|x| format!("{}", x))
+					.collect::<Vec<String>>()
+					.join(", "),
+				for_type
+			),
 			ReturnValue::TraitNotImplemented,
 		),
 		TypeError::BranchesDontMatch => {
@@ -185,28 +208,78 @@ fn get_type_error(t: Span<TypeError>) -> Error {
 
 fn load_std<P: AsRef<Path>>(
 	scope: &mut Scope<Option<(Span<Item>, bool)>>,
+	type_db: &mut TypeDB,
+	trait_db: &mut TraitDB,
 	std_path: P,
 ) -> Result<(), Error> {
 	let fp = FileProvider::new(&std_path);
-	{
-		let tokens = match crate::tokens::tokenize("src/std/print.lang", &fp) {
+	let files = ["src/std/print.lang", "src/std/ops.lang"];
+	for f in &files {
+		println!("Loading file {}", f);
+		println!("Tokenizing");
+		let tokens = match crate::tokens::tokenize(f, &fp) {
 			Ok(v) => v,
 			Err(e) => return Err(e),
 		};
+		println!("Parsing");
 		let items = match crate::parser::parse_lines(tokens, true) {
 			Ok(v) => v,
 			Err(e) => return Err(e),
 		};
-		for item in items {
-			match item.as_ref() {
-				Item::Fn(name, _, _, _) => scope.add_variable(
-					name.val(),
-					scope::Type::NoMut(item.as_ref().get_type()),
-					Some((item, true)),
-				),
-			}
-			.expect("Error adding item");
-		}
+		println!("Loading items into scope");
+		load_items(&items, scope, type_db, trait_db);
 	}
 	Ok(())
+}
+
+pub fn load_items(
+	items: &[Span<Item>],
+	scope: &mut Scope<Option<(Span<Item>, bool)>>,
+	type_db: &mut TypeDB,
+	trait_db: &mut TraitDB,
+) {
+	for item in items {
+		match item.as_ref() {
+			Item::Fn(name, _, _, _) => match scope.add_variable(
+				name.val(),
+				scope::Type::NoMut(item.as_ref().get_type().unwrap()),
+				Some((item.clone(), false)),
+			) {
+				Ok(v) => Ok(v),
+				Err(_) => Err("Error adding scope to variable".into()),
+			}
+			.and_then(|_| match type_db.add(item.as_ref().get_type().unwrap()) {
+				Ok(v) => Ok(v),
+				Err(_) => Err(format!(
+					"Error adding type `{}` to db",
+					item.as_ref().get_type().unwrap()
+				)),
+			}),
+			Item::TraitDef(name, t) => match trait_db.insert(name.val(), t.clone()) {
+				Some(_) => Err(format!(
+					"Name `{}` already defined for a trait",
+					name.as_ref()
+				)),
+				None => Ok(()),
+			},
+			Item::ImplTrait(for_type_data, impl_trait) => {
+				if let Some(t) = trait_db.get(impl_trait.trait_name_string()) {
+					if impl_trait.matches_trait(t) {
+						match type_db
+							.get_mut(for_type_data.as_ref())
+							.map(|x| x.add_impl_trait(impl_trait.clone()))
+						{
+							Some(()) => Ok(()),
+							None => Err("Error adding trait to type".into()),
+						}
+					} else {
+						Err("Trait doesn't match impl trait".into())
+					}
+				} else {
+					Err("Trait not defined".into())
+				}
+			}
+		}
+		.expect("Error adding item");
+	}
 }

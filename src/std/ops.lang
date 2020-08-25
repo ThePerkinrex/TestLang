@@ -1,0 +1,21 @@
+trait Add<Rhs> {
+	type Output;
+	
+	fn add(self, other: Rhs) -> Output;
+}
+
+impl Add<number> for number {
+	type Output = number;
+
+	fn add(self, other: number) -> number {
+		INTRINSIC_ADD_NUM
+	}
+}
+
+impl Add<string> for string {
+	type Output = string;
+
+	fn add(self, other: string) -> string {
+		INTRINSIC_ADD_STR
+	}
+}

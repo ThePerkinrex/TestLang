@@ -16,6 +16,7 @@ pub enum ReturnValue {
 	UnexpectedNonValue,
 	UnexpectedNonIdentifier,
 	UnexpectedType,
+	ExpectedType,
 	ExpectedReturnKwd,
 	NoMain,
 	MainHasArguments,
@@ -26,6 +27,8 @@ pub enum ReturnValue {
 	BrnchRetTypesDontMatch,
 	IdentNotDefined,
 	IntrinsicNotDefined,
+	ExpectedSemicolon,
+	UnexpectedToken,
 }
 
 impl Into<i32> for ReturnValue {

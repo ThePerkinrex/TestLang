@@ -1,8 +1,9 @@
 use crate::ast;
-use crate::tokens::Token;
 use crate::error::{Error, ErrorKind};
+use crate::tokens::Token;
 
 use std::convert::{AsMut, AsRef};
+use std::hash::Hash;
 use std::path::PathBuf;
 
 pub mod location;
@@ -52,7 +53,8 @@ where
 		);
 		for x in other {
 			assert_eq!(
-				self.loc.file(), x.loc.file(),
+				self.loc.file(),
+				x.loc.file(),
 				"Files don't match when joining tokens"
 			)
 		}
@@ -143,6 +145,29 @@ impl std::fmt::Debug for Span<ast::TypeError> {
 	}
 }
 
+impl std::fmt::Display for Span<ast::TypeData> {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
+		write!(f, "{}", self.v)
+	}
+}
+
+impl std::fmt::Debug for Span<ast::TypeData> {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
+		write!(f, "{:?}", self.v)
+	}
+}
+
+impl<T: Hash + Clone> Hash for Span<T> {
+	fn hash<H>(&self, hasher: &mut H)
+	where
+		H: std::hash::Hasher,
+	{
+		self.as_ref().hash(hasher)
+	}
+}
+
+impl<T: Eq + Clone> Eq for Span<T> {}
+
 pub trait HasLoc {
 	fn loc(&self) -> &Location;
 }
@@ -174,17 +199,9 @@ where
 		)
 	}
 	fn warn<S: ToString>(&self, info: S) -> Error {
-		Error::new(
-			self.loc().clone(),
-			info.to_string(),
-			ErrorKind::Warning,
-		)
+		Error::new(self.loc().clone(), info.to_string(), ErrorKind::Warning)
 	}
 	fn info<S: ToString>(&self, info: S) -> Error {
-		Error::new(
-			self.loc().clone(),
-			info.to_string(),
-			ErrorKind::Info,
-		)
+		Error::new(self.loc().clone(), info.to_string(), ErrorKind::Info)
 	}
 }
