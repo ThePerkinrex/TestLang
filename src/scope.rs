@@ -283,7 +283,10 @@ pub struct TypeDB(GenericScope<ast::TypeData, ast::Type>);
 
 impl TypeDB {
 	pub fn new() -> Self {
-		Self(GenericScope::root())
+		let mut scope = GenericScope::root();
+		scope.add(ast::TypeData::Number, ast::TypeData::Number.default_type()).unwrap();
+		scope.add(ast::TypeData::String, ast::TypeData::String.default_type()).unwrap();
+		Self(scope)
 	}
 
 	pub fn push(self) -> Self {
@@ -292,6 +295,10 @@ impl TypeDB {
 
 	pub fn pop(self) -> Self {
 		Self(self.0.pop())
+	}
+
+	pub fn get_no_mut(&self, data: &ast::TypeData) -> Result<&ast::Type, ()> {
+		self.0.get(data)
 	}
 
 	pub fn get(&mut self, data: &ast::TypeData) -> ast::Type {

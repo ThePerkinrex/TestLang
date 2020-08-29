@@ -10,7 +10,10 @@ use std::collections::HashMap;
 // pub type TypeDB = HashMap<TypeData, Type>;
 
 #[derive(Clone, Hash, Eq)]
-pub struct FnSignature(pub Vec<(Span<Ident>, Span<TypeData>)>, pub Box<Span<TypeData>>);
+pub struct FnSignature(
+	pub Vec<(Span<Ident>, Span<TypeData>)>,
+	pub Box<Span<TypeData>>,
+);
 
 impl FnSignature {
 	pub fn matches_args(&self, args_other: &[TypeData]) -> bool {
@@ -168,7 +171,7 @@ impl std::fmt::Display for TypeData {
 					.join(", ")
 			), // Self::Generic(g) => write!(f, "{}", g),
 			Self::SelfRef => write!(f, "Self"),
-			Self::Other(o) => write!(f, "{}", o)
+			Self::Other(o) => write!(f, "{}", o),
 		}
 	}
 }
@@ -189,7 +192,11 @@ pub trait HasType<T: Clone> {
 		f: &mut F,
 	) -> Result<TypeData, Span<TypeError>>;
 
-	fn get_type(&self, scope: &Scope<T>, type_db: &mut TypeDB) -> std::result::Result<TypeData, Span<TypeError>> {
+	fn get_type(
+		&self,
+		scope: &Scope<T>,
+		type_db: &mut TypeDB,
+	) -> std::result::Result<TypeData, Span<TypeError>> {
 		self.get_type_with_call_cb(scope, type_db, &mut |_| Ok(()))
 	}
 }
@@ -210,6 +217,28 @@ pub struct ImplTrait {
 }
 
 impl ImplTrait {
+	pub fn new(
+		based_on: Span<Ident>,
+		defining_types: Vec<Span<Type>>,
+		typedefs: HashMap<Ident, Span<Type>>,
+		methods: HashMap<Ident, (FnSignature, Span<Expr>)>,
+	) -> Self {
+		Self {
+			based_on,
+			defining_types,
+			typedefs,
+			methods,
+		}
+	}
+
+	// pub fn methods(&self) -> &HashMap<Ident, (FnSignature, Span<Expr>)> {
+	// 	&self.methods
+	// }
+
+	pub fn get_method(&self, id: &Ident) -> Option<&(FnSignature, Span<Expr>)> {
+		self.methods.get(id)
+	}
+
 	pub fn matches(&self, definfing_types: &[&Type]) -> bool {
 		let mut ret = self.defining_types.len() == definfing_types.len();
 		let mut i = 0;
@@ -234,24 +263,100 @@ impl ImplTrait {
 		self.typedefs.get(&name.into()).map(|x| x.as_ref())
 	}
 
-	pub fn matches_trait(&self, t: &Trait) -> bool {
-		let mut ret = self.trait_name() == t.name.as_ref() && self.defining_types.len() == t.defining_types.len();
+	pub fn matches_trait<
+		F: FnMut(
+			&TypeDB,
+			Vec<(Span<Ident>, Span<TypeData>)>,
+			Span<TypeData>,
+			Span<Expr>,
+		) -> Result<(), Error>,
+	>(
+		&self,
+		t: &Trait,
+		type_db: &TypeDB,
+		mut checker_fn: F,
+	) -> Result<bool, Error> {
+		let mut type_db = type_db.clone().push();
+		println!(
+			"Checking if impl trait {} matches {}",
+			self.trait_name(),
+			t.name
+		);
+		let mut ret = self.trait_name() == t.name.as_ref()
+			&& self.defining_types.len() == t.defining_types.len();
+		for (name, t) in t.defining_types.iter().zip(self.defining_types.iter()) {
+			type_db.set(TypeData::Other(name.val()), t.val())
+		}
+		// TODO give better errors
 		if ret == false {
-			return false;
+			println!("Names or defining types len don't match");
+			return Ok(false);
 		}
-		for (self_k, _) in &self.typedefs {
-			ret = ret && t.typedefs.iter().position(|x| x.as_ref() == self_k).is_some();
+		for (self_k, self_t) in &self.typedefs {
+			ret = ret
+				&& t.typedefs
+					.iter()
+					.position(|x| x.as_ref() == self_k)
+					.is_some();
 			if ret == false {
-				return false;
+				return Ok(false);
+			}
+			type_db.set(TypeData::Other(self_k.clone()), self_t.val())
+		}
+		for (self_method_name, (self_signature, self_body)) in &self.methods {
+			println!(
+				"Checking {} {:?} is present in trait",
+				self_method_name, self_signature
+			);
+			ret = ret
+				&& t.methods
+					.get(self_method_name)
+					.map(|fn_sig| {
+						println!(
+							"[METHOD SIGNATURE] {} {:?} is present in trait",
+							self_method_name, self_signature
+						);
+						let FnSignature(args_other, ret_other) = fn_sig.clone();
+						let FnSignature(args_self, ret_self) = self_signature.clone();
+						let mut ret = type_db.get_no_mut(ret_other.as_ref().as_ref())
+							== type_db.get_no_mut(ret_self.as_ref().as_ref());
+						println!(
+							"{} (({}){:?} == ({}){:?})",
+							ret,
+							ret_other,
+							type_db.get_no_mut(ret_other.as_ref().as_ref()),
+							ret_self,
+							type_db.get_no_mut(ret_self.as_ref().as_ref())
+						);
+						for ((_, other_type), (_, self_type)) in
+							args_other.iter().zip(args_self.iter())
+						{
+							ret = ret
+								&& type_db.get_no_mut(other_type.as_ref())
+									== type_db.get_no_mut(self_type.as_ref());
+							println!(
+								"{} (({}){:?} == ({}){:?})",
+								ret,
+								other_type,
+								type_db.get_no_mut(other_type.as_ref()),
+								self_type,
+								type_db.get_no_mut(self_type.as_ref())
+							);
+						}
+						ret
+					})
+					.unwrap_or(false);
+			//println!("{}", ret);
+			if ret == false {
+				return Ok(false);
+			}
+			{
+				let FnSignature(args, ret) = self_signature;
+				checker_fn(&type_db, args.clone(), *ret.clone(), self_body.clone())?;
 			}
 		}
-		for (self_method_name, (self_signature, _)) in &self.methods {
-			ret = ret && t.methods.get(self_method_name).map(|fn_sig| fn_sig == self_signature).unwrap_or(false);
-			if ret == false {
-				return false;
-			}
-		}
-		ret
+		//println!("{}", ret);
+		Ok(ret)
 	}
 }
 
@@ -294,6 +399,22 @@ pub struct Trait {
 	typedefs: Vec<Span<Ident>>,
 	methods: HashMap<Ident, FnSignature>,
 	// functions: HashMap<Ident, FnSignature>,
+}
+
+impl Trait {
+	pub fn new(
+		name: Span<Ident>,
+		defining_types: Vec<Span<Ident>>,
+		typedefs: Vec<Span<Ident>>,
+		methods: HashMap<Ident, FnSignature>,
+	) -> Self {
+		Self {
+			name,
+			typedefs,
+			defining_types,
+			methods,
+		}
+	}
 }
 
 impl std::fmt::Debug for Trait {

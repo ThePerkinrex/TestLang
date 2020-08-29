@@ -16,7 +16,7 @@ pub fn check(items_slice: &[Span<Item>], type_db: &mut TypeDB) -> Result<(), Err
 		Ok(v) => v,
 		Err(e) => return Err(e),
 	};
-	load_items(items_slice, &mut scope, type_db, &mut trait_db);
+	load_items(items_slice, &mut scope, type_db, &mut trait_db)?;
 	println!("Loaded items, checking main");
 	if let Ok(TypeData::Fn(FnSignature(args, ret))) = scope
 		.get_type(&String::from("main"))
@@ -86,42 +86,47 @@ fn check_item(
 				.set_value(variable, Some((main.clone(), true)))
 				.expect("Item cant be checked off");
 			match main.val() {
-				Item::Fn(_, args, ret, block) => {
-					*scope = scope.clone().push();
-					for (arg_name, arg_type) in args {
-						if let Err(_) = scope.add_variable(
-							arg_name.val(),
-							scope::Type::NoMut(arg_type.val()),
-							None,
-						) {
-							return Some(Err(
-								arg_name.error("Name already defined", ReturnValue::NameDefined)
-							));
-						}
-					}
-					let ret_block = match block.get_type(&scope, type_db) {
-						Ok(v) => v,
-						Err(e) => panic!("{:?}", e.as_ref()),
-					};
-					if ret.as_ref() != &ret_block {
-						return Some(Err(block.error(
-							format!("Return type doesn't match defined return type (`{}`)", ret),
-							ReturnValue::TypesDontMatch,
-						)));
-					}
-					println!("Check item's block");
-					let res = check_expr(&block, scope, type_db);
-					*scope = scope.clone().pop();
-					Some(res)
-				}
+				Item::Fn(_, args, ret, block) => Some(check_fn(scope, type_db, args, ret, block)),
 
-				_ => todo!(),
+				_ => None,
 			}
 		}
 	} else {
 		//unreachable!("{} is not defined or not an item", variable)
 		None
 	}
+}
+
+pub fn check_fn(
+	scope: &mut Scope<Option<(Span<Item>, bool)>>,
+	type_db: &mut TypeDB,
+	args: Vec<(Span<Ident>, Span<TypeData>)>,
+	ret: Span<TypeData>,
+	block: Span<Expr>,
+) -> Result<(), Error> {
+	*scope = scope.clone().push();
+	for (arg_name, arg_type) in args {
+		if let Err(_) = scope.add_variable(arg_name.val(), scope::Type::NoMut(arg_type.val()), None)
+		{
+			return Err(
+				arg_name.error("Name already defined", ReturnValue::NameDefined)
+			);
+		}
+	}
+	let ret_block = match block.get_type(&scope, type_db) {
+		Ok(v) => v,
+		Err(e) => panic!("{:?}", e.as_ref()),
+	};
+	if ret.as_ref() != &ret_block {
+		return Err(block.error(
+			format!("Return type doesn't match defined return type (`{}`)", ret),
+			ReturnValue::TypesDontMatch,
+		));
+	}
+	println!("Check item's block");
+	let res = check_expr(&block, scope, type_db);
+	*scope = scope.clone().pop();
+	res
 }
 
 pub fn check_expr(
@@ -227,7 +232,7 @@ fn load_std<P: AsRef<Path>>(
 			Err(e) => return Err(e),
 		};
 		println!("Loading items into scope");
-		load_items(&items, scope, type_db, trait_db);
+		load_items(&items, scope, type_db, trait_db)?;
 	}
 	Ok(())
 }
@@ -237,7 +242,7 @@ pub fn load_items(
 	scope: &mut Scope<Option<(Span<Item>, bool)>>,
 	type_db: &mut TypeDB,
 	trait_db: &mut TraitDB,
-) {
+) -> Result<(), Error> {
 	for item in items {
 		match item.as_ref() {
 			Item::Fn(name, _, _, _) => match scope.add_variable(
@@ -263,13 +268,19 @@ pub fn load_items(
 				None => Ok(()),
 			},
 			Item::ImplTrait(for_type_data, impl_trait) => {
-				if let Some(t) = trait_db.get(impl_trait.trait_name_string()) {
-					if impl_trait.matches_trait(t) {
-						match type_db
-							.get_mut(for_type_data.as_ref())
-							.map(|x| x.add_impl_trait(impl_trait.clone()))
-						{
-							Some(()) => Ok(()),
+				*type_db = type_db.clone().push();
+				let for_type = type_db.get(for_type_data.as_ref());
+				type_db.set(TypeData::SelfRef, for_type);
+				let res = if let Some(t) = trait_db.get(impl_trait.trait_name_string()) {
+					if impl_trait.matches_trait(t, &type_db, |type_db, args, ret, body|{
+						let mut type_db = type_db.clone().push();
+						check_fn(scope, &mut type_db, args, ret, body)
+					})? {
+						match type_db.get_mut(for_type_data.as_ref()) {
+							Some(x) => {
+								x.add_impl_trait(impl_trait.clone());
+								Ok(())
+							}
 							None => Err("Error adding trait to type".into()),
 						}
 					} else {
@@ -277,9 +288,12 @@ pub fn load_items(
 					}
 				} else {
 					Err("Trait not defined".into())
-				}
+				};
+				*type_db = type_db.clone().pop();
+				res
 			}
 		}
 		.expect("Error adding item");
 	}
+	Ok(())
 }

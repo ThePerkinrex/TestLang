@@ -49,7 +49,7 @@ fn load_std<P: AsRef<Path>>(scope: &mut Scope<Value>, std_path: P) -> Result<(),
 					)
 				}
 				Item::TraitDef(_, _) => Ok(()),
-				Item::ImplTrait(_, _) => Ok(())
+				Item::ImplTrait(_, _) => Ok(()),
 			}
 			.expect("Error adding std fn");
 		}
@@ -69,7 +69,7 @@ fn load_items_into_scope(scope: &mut Scope<Value>, type_db: &TypeDB, items: &[Sp
 				)
 			}
 			Item::TraitDef(_, _) => Ok(()),
-			Item::ImplTrait(_, _) => Ok(())
+			Item::ImplTrait(_, _) => Ok(()),
 		}
 		.expect("Error adding item");
 	}
@@ -133,99 +133,118 @@ pub fn run_expr(scope: &mut Scope<Value>, type_db: &mut TypeDB, expr: &Expr) -> 
 		Expr::Block(b) => run_block(scope, type_db, b),
 		Expr::CompilerIntrinsic(c) => return run_intrinsic(scope, c),
 		Expr::Add(rhs, lhs) => {
-			let op = (
-				match run_expr(scope, type_db, rhs.as_ref().as_ref()) {
-					RetVal::Value(v) => v,
-					x => return x,
-				},
-				match run_expr(scope, type_db, lhs.as_ref().as_ref()) {
-					RetVal::Value(v) => v,
-					x => return x,
-				},
-			);
-			// TODO: Add native trait implementations
-			match op {
-				(Value::Num(a), Value::Num(b)) => Value::Num(a + b),
-				(Value::Str(a), Value::Str(b)) => Value::Str(format!("{}{}", a, b)),
-				_ => unreachable!(),
-			}
-		}
-		Expr::Sub(rhs, lhs) => {
-			let op = (
-				match run_expr(scope, type_db, rhs.as_ref().as_ref()) {
-					RetVal::Value(v) => v,
-					x => return x,
-				},
-				match run_expr(scope, type_db, lhs.as_ref().as_ref()) {
-					RetVal::Value(v) => v,
-					x => return x,
-				},
-			);
-			// TODO: Add native trait implementations
-			match op {
-				(Value::Num(a), Value::Num(b)) => Value::Num(a - b),
-				_ => unreachable!(),
-			}
-		}
-		Expr::Mul(rhs, lhs) => {
-			let op = (
-				match run_expr(scope, type_db, rhs.as_ref().as_ref()) {
-					RetVal::Value(v) => v,
-					x => return x,
-				},
-				match run_expr(scope, type_db, lhs.as_ref().as_ref()) {
-					RetVal::Value(v) => v,
-					x => return x,
-				},
-			);
-			// TODO: Add native trait implementations
-			match op {
-				(Value::Num(a), Value::Num(b)) => Value::Num(a * b),
-				_ => unreachable!(),
-			}
-		}
-		Expr::Div(rhs, lhs) => {
-			let op = (
-				match run_expr(scope, type_db, rhs.as_ref().as_ref()) {
-					RetVal::Value(v) => v,
-					x => return x,
-				},
-				match run_expr(scope, type_db, lhs.as_ref().as_ref()) {
-					RetVal::Value(v) => v,
-					x => return x,
-				},
-			);
-			// TODO: Add native trait implementations
-			match op {
-				(Value::Num(a), Value::Num(b)) => Value::Num(a / b),
-				_ => unreachable!(),
-			}
-		}
-		Expr::Exp(rhs, lhs) => {
-			let op = (
-				match run_expr(scope, type_db, rhs.as_ref().as_ref()) {
-					RetVal::Value(v) => v,
-					x => return x,
-				},
-				match run_expr(scope, type_db, lhs.as_ref().as_ref()) {
-					RetVal::Value(v) => v,
-					x => return x,
-				},
-			);
-			// TODO: Add native trait implementations
-			match op {
-				(Value::Num(a), Value::Num(b)) => Value::Num(a.powf(b)),
-				_ => unreachable!(),
-			}
-		}
-		Expr::Neg(e) => {
-			let v = match run_expr(scope, type_db, e.as_ref().as_ref()) {
+			let rhs_value = match run_expr(scope, type_db, rhs.as_ref().as_ref()) {
 				RetVal::Value(v) => v,
 				x => return x,
 			};
-			match v {
-				Value::Num(n) => Value::Num(-n),
-				_ => unreachable!(),
+			let rhs_type_data = rhs_value.get_type(scope, type_db).unwrap();
+			let rhs_type = type_db.get(&rhs_type_data);
+			let lhs_value = match run_expr(scope, type_db, rhs.as_ref().as_ref()) {
+				RetVal::Value(v) => v,
+				x => return x,
+			};
+			let lhs_type_data = lhs_value.get_type(scope, type_db).unwrap();
+			let lhs_type = type_db.get(&lhs_type_data);
+			let impl_trait = rhs_type.get_impl_trait("Add", &[&lhs_type]).unwrap();
+			let (method_sig, method_body) = impl_trait.get_method(&"add".into()).unwrap();
+			match inner_run_fn(scope, type_db, method_sig, method_body.as_ref(), &[rhs, lhs]) {
+				RetVal::Value(v) => v,
+				x => return x
+			}
+		}
+		Expr::Sub(rhs, lhs) => {
+			let rhs_value = match run_expr(scope, type_db, rhs.as_ref().as_ref()) {
+				RetVal::Value(v) => v,
+				x => return x,
+			};
+			let rhs_type_data = rhs_value.get_type(scope, type_db).unwrap();
+			let rhs_type = type_db.get(&rhs_type_data);
+			let lhs_value = match run_expr(scope, type_db, rhs.as_ref().as_ref()) {
+				RetVal::Value(v) => v,
+				x => return x,
+			};
+			let lhs_type_data = lhs_value.get_type(scope, type_db).unwrap();
+			let lhs_type = type_db.get(&lhs_type_data);
+			let impl_trait = rhs_type.get_impl_trait("Sub", &[&lhs_type]).unwrap();
+			let (method_sig, method_body) = impl_trait.get_method(&"sub".into()).unwrap();
+			match inner_run_fn(scope, type_db, method_sig, method_body.as_ref(), &[rhs, lhs]) {
+				RetVal::Value(v) => v,
+				x => return x
+			}
+		}
+		Expr::Mul(rhs, lhs) => {
+			let rhs_value = match run_expr(scope, type_db, rhs.as_ref().as_ref()) {
+				RetVal::Value(v) => v,
+				x => return x,
+			};
+			let rhs_type_data = rhs_value.get_type(scope, type_db).unwrap();
+			let rhs_type = type_db.get(&rhs_type_data);
+			let lhs_value = match run_expr(scope, type_db, rhs.as_ref().as_ref()) {
+				RetVal::Value(v) => v,
+				x => return x,
+			};
+			let lhs_type_data = lhs_value.get_type(scope, type_db).unwrap();
+			let lhs_type = type_db.get(&lhs_type_data);
+			let impl_trait = rhs_type.get_impl_trait("Mul", &[&lhs_type]).unwrap();
+			let (method_sig, method_body) = impl_trait.get_method(&"mul".into()).unwrap();
+			match inner_run_fn(scope, type_db, method_sig, method_body.as_ref(), &[rhs, lhs]) {
+				RetVal::Value(v) => v,
+				x => return x
+			}
+		}
+		Expr::Div(rhs, lhs) => {
+			let rhs_value = match run_expr(scope, type_db, rhs.as_ref().as_ref()) {
+				RetVal::Value(v) => v,
+				x => return x,
+			};
+			let rhs_type_data = rhs_value.get_type(scope, type_db).unwrap();
+			let rhs_type = type_db.get(&rhs_type_data);
+			let lhs_value = match run_expr(scope, type_db, rhs.as_ref().as_ref()) {
+				RetVal::Value(v) => v,
+				x => return x,
+			};
+			let lhs_type_data = lhs_value.get_type(scope, type_db).unwrap();
+			let lhs_type = type_db.get(&lhs_type_data);
+			let impl_trait = rhs_type.get_impl_trait("Div", &[&lhs_type]).unwrap();
+			let (method_sig, method_body) = impl_trait.get_method(&"div".into()).unwrap();
+			match inner_run_fn(scope, type_db, method_sig, method_body.as_ref(), &[rhs, lhs]) {
+				RetVal::Value(v) => v,
+				x => return x
+			}
+		}
+		Expr::Exp(rhs, lhs) => {
+			let rhs_value = match run_expr(scope, type_db, rhs.as_ref().as_ref()) {
+				RetVal::Value(v) => v,
+				x => return x,
+			};
+			let rhs_type_data = rhs_value.get_type(scope, type_db).unwrap();
+			let rhs_type = type_db.get(&rhs_type_data);
+			let lhs_value = match run_expr(scope, type_db, rhs.as_ref().as_ref()) {
+				RetVal::Value(v) => v,
+				x => return x,
+			};
+			let lhs_type_data = lhs_value.get_type(scope, type_db).unwrap();
+			let lhs_type = type_db.get(&lhs_type_data);
+			let impl_trait = rhs_type.get_impl_trait("Exp", &[&lhs_type]).unwrap();
+			let (method_sig, method_body) = impl_trait.get_method(&"exp".into()).unwrap();
+			match inner_run_fn(scope, type_db, method_sig, method_body.as_ref(), &[rhs, lhs]) {
+				RetVal::Value(v) => v,
+				x => return x
+			}
+		}
+		Expr::Neg(e) => {
+			let rhs_value = match run_expr(scope, type_db, e.as_ref().as_ref()) {
+				RetVal::Value(v) => v,
+				x => return x,
+			};
+			let rhs_type_data = rhs_value.get_type(scope, type_db).unwrap();
+			let rhs_type = type_db.get(&rhs_type_data);
+			
+			let impl_trait = rhs_type.get_impl_trait("Neg", &[]).unwrap();
+			let (method_sig, method_body) = impl_trait.get_method(&"neg".into()).unwrap();
+			match inner_run_fn(scope, type_db, method_sig, method_body.as_ref(), &[e]) {
+				RetVal::Value(v) => v,
+				x => return x
 			}
 		}
 		Expr::Call(callee, args) => {
@@ -265,6 +284,36 @@ pub fn run_expr(scope: &mut Scope<Value>, type_db: &mut TypeDB, expr: &Expr) -> 
 	})
 }
 
+fn inner_run_fn(
+	scope: &mut Scope<Value>,
+	type_db: &mut TypeDB,
+	sig: &FnSignature,
+	block: &Expr,
+	args: &[&Span<Expr>],
+) -> RetVal {
+	let mut new_scope = scope.clone().push();
+	let FnSignature(a, _) = sig;
+	for (arg_expr, (arg_name, arg_type)) in args.iter().zip(a.iter()) {
+		new_scope
+			.add_variable(
+				arg_name.val(),
+				scope::Type::NoMut(arg_type.val()),
+				match run_expr(scope, type_db, arg_expr.as_ref()) {
+					RetVal::Value(v) => v,
+					x => return x,
+				},
+			)
+			.unwrap();
+	}
+
+	let ret = match run_expr(&mut new_scope, type_db, block) {
+		RetVal::Value(v) => v,
+		x => return x,
+	};
+	*scope = new_scope.pop();
+	RetVal::Value(ret)
+}
+
 fn run_intrinsic(scope: &Scope<Value>, intrinsic: &Intrinsic) -> RetVal {
 	match intrinsic {
 		Intrinsic::Print => {
@@ -274,6 +323,39 @@ fn run_intrinsic(scope: &Scope<Value>, intrinsic: &Intrinsic) -> RetVal {
 				unreachable!()
 			}
 			RetVal::Value(Value::Void)
+		}
+		Intrinsic::AddStr => {
+			if let Value::Str(a) = scope.get_value(&"self".into()).unwrap() {
+				if let Value::Str(b) = scope.get_value(&"other".into()).unwrap() {
+					RetVal::Value(Value::Str(format!("{}{}", a, b)))
+				} else {
+					unreachable!()
+				}
+			} else {
+				unreachable!()
+			}
+		}
+		Intrinsic::AddNum => {
+			if let Value::Num(a) = scope.get_value(&"self".into()).unwrap() {
+				if let Value::Num(b) = scope.get_value(&"other".into()).unwrap() {
+					RetVal::Value(Value::Num(a + b))
+				} else {
+					unreachable!()
+				}
+			} else {
+				unreachable!()
+			}
+		}
+		Intrinsic::SubNum => {
+			if let Value::Num(a) = scope.get_value(&"self".into()).unwrap() {
+				if let Value::Num(b) = scope.get_value(&"other".into()).unwrap() {
+					RetVal::Value(Value::Num(a - b))
+				} else {
+					unreachable!()
+				}
+			} else {
+				unreachable!()
+			}
 		}
 	}
 }

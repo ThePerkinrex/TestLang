@@ -6,6 +6,8 @@ use crate::operators::Operator;
 use crate::span::{HasLoc, Span, SpanError};
 use crate::tokens::Token;
 
+use std::collections::HashMap;
+
 fn parse_inner(
 	i: &mut usize,
 	tokens: &[Span<Token>],
@@ -20,7 +22,10 @@ fn parse_inner(
 			l.end.col += 1;
 			l.start = l.end;
 			let span = Span::new((), l);
-			return Err(span.error(&format!("Unexpected EOI, expected `{}`", end), ReturnValue::UnclosedParens));
+			return Err(span.error(
+				&format!("Unexpected EOI, expected `{}`", end),
+				ReturnValue::UnclosedParens,
+			));
 			//panic!("Unexpected EOI")
 		}
 		// println!("{:?}", tokens[index + offset]);
@@ -51,6 +56,7 @@ pub fn parse_lines(
 			i += 1;
 		} else if matches!(tok.val(), Token::Ident(x) if x == String::from("impl")) {
 			//println!("Matching impl");
+			let start_tok = tok;
 			i += 1;
 			let ident = if let Some(t) = tokens.get(i) {
 				if let Token::Ident(id) = t.val() {
@@ -76,9 +82,7 @@ pub fn parse_lines(
 						i += 1;
 						let inner_tokens = parse_inner(&mut i, &tokens, "<", ">")?;
 						let mut v = vec![];
-						for n in inner_tokens
-							.split(|x| matches!(x.as_ref(), Token::Comma))
-						{
+						for n in inner_tokens.split(|x| matches!(x.as_ref(), Token::Comma)) {
 							//dbg!(&n);
 							let (nf, offset) = parse_type(&n, 0)?;
 							//dbg!(offset, n.len());
@@ -94,7 +98,6 @@ pub fn parse_lines(
 									ReturnValue::UnexpectedNonIdentifier,
 								));
 							}
-							
 							// println!("{}", n.iter().map(|x|format!("{:?},", x)).fold(String::new(), |x, y| format!("{}{}", x, y)));
 						}
 						v
@@ -111,11 +114,142 @@ pub fn parse_lines(
 					ReturnValue::UnclosedParens,
 				));
 			};
-			//println!("Name: {}", ident);
-			//println!("Defining types: {:?}", defining_types);
+			let for_type = if let Some(tok) = tokens.get(i) {
+				if matches!(tok.as_ref(), Token::Ident(x) if x == "for") {
+					i += 1;
+					let (for_type, offset) = parse_type(&tokens, i)?;
+					i += offset;
+					for_type
+				} else {
+					return Err(tok.error("Expected `for`", ReturnValue::UnexpectedNonIdentifier));
+				}
+			} else {
+				let mut l = tokens.last().unwrap().loc().clone();
+				l.end.col += 1;
+				l.start = l.end;
+				let span = Span::new((), l);
+				return Err(span.error(
+					"Unexpected EOI, expected `for`",
+					ReturnValue::UnclosedParens,
+				));
+			};
+			//println!("next token (should be open brace): {:?}", tokens.get(i));
+			if let Some(tok) = tokens.get(i) {
+				if matches!(tok.as_ref(), Token::Kwd(x) if x == "{") {
+					i += 1;
+					let inner_tokens = parse_inner(&mut i, &tokens, "{", "}")?;
+					{
+						let mut i = 0;
+						let mut type_defs = HashMap::new();
+						let mut methods = HashMap::new();
+						while let Some(tok) = inner_tokens.get(i) {
+							match tok.as_ref() {
+								Token::EOL => (),
+								Token::Ident(x) if x == "fn" => {
+									if let ast::Item::Fn(name, args, ret, body) =
+										parse_fn(&mut i, &inner_tokens, intrinsics, true)?.unwrap()
+									{
+										let fn_signature = ast::FnSignature(args, Box::new(ret));
+										methods.insert(name.unwrap(), (fn_signature, body));
+										println!("Methods: {:?}", methods);
+									} else {
+										unreachable!()
+									}
+								}
+								Token::Ident(x) if x == "type" => {
+									i += 1;
+									let type_name = if let Some(t) = inner_tokens.get(i) {
+										if let Token::Ident(id) = t.val() {
+											i += 1;
+											t.clone().map(id)
+										} else {
+											return Err(t.error(
+												"Expected identfier",
+												ReturnValue::UnexpectedNonIdentifier,
+											));
+										}
+									} else {
+										let mut l = inner_tokens.last().unwrap().loc().clone();
+										l.end.col += 1;
+										l.start = l.end;
+										let span = Span::new((), l);
+										return Err(span.error(
+											"Unexpected EOI, expected identifier",
+											ReturnValue::UnclosedParens,
+										));
+									};
+									// i += 1;
+									if let Some(t) = inner_tokens.get(i) {
+										if matches!(t.as_ref(), Token::Kwd(x) if x == "=") {
+											i += 1;
+										} else {
+											return Err(t.error(
+												"Expected `=`",
+												ReturnValue::UnexpectedToken,
+											));
+										}
+									} else {
+										let mut l = inner_tokens.last().unwrap().loc().clone();
+										l.end.col += 1;
+										l.start = l.end;
+										let span = Span::new((), l);
+										return Err(span.error(
+											"Unexpected EOI, expected `=`",
+											ReturnValue::UnclosedParens,
+										));
+									}
+									let (assigned_type, offset) = parse_type(&inner_tokens, i)?;
+									i += offset;
+									if let Some(t) = inner_tokens.get(i) {
+										if matches!(t.as_ref(), Token::Colon) {
+											i += 1;
+										} else {
+											return Err(t.error(
+												"Expected `;`",
+												ReturnValue::ExpectedSemicolon,
+											));
+										}
+									} else {
+										let mut l = inner_tokens.last().unwrap().loc().clone();
+										l.end.col += 1;
+										l.start = l.end;
+										let span = Span::new((), l);
+										return Err(span.error(
+											"Unexpected EOI, expected `;`",
+											ReturnValue::UnclosedParens,
+										));
+									}
+									type_defs.insert(type_name.unwrap(), assigned_type);
+									println!("{:?}", type_defs);
+								}
+								_ => {
+									return Err(
+										tok.error("Unexpected token", ReturnValue::UnexpectedToken)
+									)
+								}
+							}
+							i += 1;
+						}
+						let last_tok = tokens[i-1].clone();
+						let impl_trait = ast::ImplTrait::new(ident, defining_types, type_defs, methods);
+						o.push(Span::join(&[start_tok.clone(), last_tok], ast::Item::ImplTrait(for_type.clone().map(for_type.as_ref().type_data().clone()), impl_trait)))
+					}
+				} else {
+					return Err(tok.error("Expected `{`", ReturnValue::UnclosedBracket));
+				}
+			} else {
+				let mut l = tokens.last().unwrap().loc().clone();
+				l.end.col += 1;
+				l.start = l.end;
+				let span = Span::new((), l);
+				return Err(span.error("Unexpected EOI, expected `{`", ReturnValue::UnclosedParens));
+			};
 
+		//println!("Name: {}", ident);
+		//println!("Defining types: {:?}", defining_types);
 		} else if matches!(tok.val(), Token::Ident(x) if x == String::from("trait")) {
 			//println!("Matching trait");
+			let start_tok = tok;
 			i += 1;
 			let ident = if let Some(t) = tokens.get(i) {
 				if let Token::Ident(id) = t.val() {
@@ -192,12 +326,9 @@ pub fn parse_lines(
 				if matches!(t.as_ref(), Token::Kwd(x) if x == "{") {
 					// if true {
 					i += 1;
-					
 					let inner_tokens = parse_inner(&mut i, &tokens, "{", "}")?;
-					
 					let mut idx = 0;
 					let mut type_defs = Vec::new();
-					use std::collections::HashMap;
 					let mut methods = HashMap::new();
 					while idx < inner_tokens.len() {
 						//println!("[{}] => {:?}", idx, inner_tokens[idx]);
@@ -209,6 +340,7 @@ pub fn parse_lines(
 							idx += 1;
 							type_defs.push(if let Some(tok) = inner_tokens.get(idx) {
 								if let Token::Ident(id) = tok.val() {
+									let id = tok.clone().map(id);
 									idx += 1;
 									if let Some(tok) = inner_tokens.get(idx) {
 										if let Token::Colon = tok.as_ref() {
@@ -280,7 +412,8 @@ pub fn parse_lines(
 								if matches!(t.val(), Token::Kwd(x) if x == "(") {
 									// if true {
 									idx += 1;
-									let inner_inner_tokens = parse_inner(&mut idx, &inner_tokens, "(", ")")?;
+									let inner_inner_tokens =
+										parse_inner(&mut idx, &inner_tokens, "(", ")")?;
 									let mut res = Vec::new();
 									for arg in inner_inner_tokens
 										.split(|tok| matches!(tok.val(), Token::Comma))
@@ -397,7 +530,15 @@ pub fn parse_lines(
 					}
 					//println!("Methods: {:?}", methods);
 					//println!("TYPEDEFS: {:?}", type_defs);
-				}
+					let last_tok = tokens[i - 1].clone();
+					o.push(Span::join(
+						&[start_tok.clone(), last_tok],
+						ast::Item::TraitDef(
+							ident.clone(),
+							ast::Trait::new(ident, defining_types, type_defs, methods),
+						),
+					))
+				} // TODO Error out on not {
 			} else {
 				let mut l = tokens.last().unwrap().loc().clone();
 				l.end.col += 1;
@@ -406,140 +547,152 @@ pub fn parse_lines(
 				return Err(span.error("Unexpected EOI, expected `{`", ReturnValue::UnclosedParens));
 			}
 		} else if matches!(tok.val(), Token::Ident(x) if x == String::from("fn")) {
-			//println!("Matching fn");
-			i += 1;
-			let ident = if let Some(t) = tokens.get(i) {
-				if let Token::Ident(id) = t.val() {
-					i += 1;
-					t.clone().map(id)
-				} else {
-					return Err(t.error("Expected identfier", ReturnValue::UnexpectedNonIdentifier));
-				}
-			} else {
-				let mut l = tokens.last().unwrap().loc().clone();
-				l.end.col += 1;
-				l.start = l.end;
-				let span = Span::new((), l);
-				return Err(span.error(
-					"Unexpected EOI, expected identifier (fn name)",
-					ReturnValue::UnclosedParens,
-				));
-			};
-			// println!("FN NAME: {}", ident);
-			let args = if let Some(t) = tokens.get(i) {
-				if matches!(t.val(), Token::Kwd(x) if x == "(") {
-					// if true {
-					i += 1;
-					let inner_tokens = parse_inner(&mut i, &tokens, "(", ")")?;
-					//println!("{:?}", tokens.get(i));
-					let mut res = Vec::new();
-					for arg in inner_tokens
-						.split(|tok| matches!(tok.val(), Token::Comma))
-						.filter(|x| !x.is_empty())
-					{
-						// println!("ARG: {:?}", arg);
-						let name = if let Some(t) = arg.get(0) {
-							if let Token::Ident(id) = t.val() {
-								t.clone().map(id)
-							} else {
-								return Err(t.error(
-									"Expected identfier",
-									ReturnValue::UnexpectedNonIdentifier,
-								));
-							}
-						} else {
-							unreachable!(); // No empty arrays
-						};
-						if let Some(t) = arg.get(1) {
-							if let Token::Semicolon = t.val() {
-							} else {
-								return Err(t.error(
-									"Expected semicolon",
-									ReturnValue::UnexpectedNonIdentifier,
-								));
-							}
-						} else {
-							let mut l = arg.last().unwrap().loc().clone();
-							l.end.col += 1;
-							l.start = l.end;
-							let span = Span::new((), l);
-							return Err(span.error(
-								"Unexpected EOI, expected semicolon",
-								ReturnValue::UnclosedParens,
-							));
-						};
-						let typ = match parse_type(&arg, 2) {
-							Ok((v, _)) => v.clone().map(v.as_ref().type_data().clone()),
-							Err(e) => return Err(e),
-						};
-						res.push((name, typ))
-					}
-					res
-				} else {
-					return Err(t.error("Expected `(`", ReturnValue::UnexpectedNonIdentifier));
-				}
-			} else {
-				let mut l = tokens.last().unwrap().loc().clone();
-				l.end.col += 1;
-				l.start = l.end;
-				let span = Span::new((), l);
-				return Err(span.error("Unexpected EOI, expected `(`", ReturnValue::UnclosedParens));
-			};
-			// println!("ARGS: {:?}", args);
-
-			let ret_type = if let Some(t) = tokens.get(i) {
-				if matches!(t.val(), Token::Kwd(k) if k == "->") {
-					i += 1;
-					let ty = match parse_type(&tokens, i) {
-						Ok((v, off)) => {
-							i += off;
-							v
-						}
-						Err(e) => return Err(e),
-					};
-					ty.clone().map(ty.as_ref().type_data().clone())
-				} else {
-					t.clone().map(ast::TypeData::Void)
-				}
-			} else {
-				let mut l = tokens.last().unwrap().loc().clone();
-				l.end.col += 1;
-				l.start = l.end;
-				let span = Span::new((), l);
-				return Err(span.error(
-					"Unexpected EOI, expected `->` or `{`",
-					ReturnValue::UnclosedParens,
-				));
-			};
-			let body = match match value::parse_block(&tokens, i, intrinsics) {
-				Ok(v) => v,
-				Err(e) => return Err(e),
-			} {
-				Some((v, off)) => {
-					i += off;
-					v
-				}
-				None => {
-					let mut l = tokens.last().unwrap().loc().clone();
-					l.end.col += 1;
-					l.start = l.end;
-					let span = Span::new((), l);
-					return Err(span.error(
-						"Unexpected EOI, expected block",
-						ReturnValue::UnclosedParens,
-					));
-				}
-			};
-
-			o.push(Span::join(
-				&[ident.clone(), body.clone().map(String::new())],
-				ast::Item::Fn(ident, args, ret_type, body),
-			))
+			o.push(parse_fn(&mut i, &tokens, intrinsics, false)?)
 		} else {
 			return Err(tok.error("Unexpected token", ReturnValue::UnexpectedToken));
 		}
 	}
 	Ok(o)
+}
+
+fn parse_fn(
+	i: &mut usize,
+	tokens: &[Span<Token>],
+	intrinsics: bool,
+	is_method: bool,
+) -> Result<Span<ast::Item>, Error> {
+	*i += 1;
+	let ident = if let Some(t) = tokens.get(*i) {
+		if let Token::Ident(id) = t.val() {
+			*i += 1;
+			t.clone().map(id)
+		} else {
+			return Err(t.error("Expected identfier", ReturnValue::UnexpectedNonIdentifier));
+		}
+	} else {
+		let mut l = tokens.last().unwrap().loc().clone();
+		l.end.col += 1;
+		l.start = l.end;
+		let span = Span::new((), l);
+		return Err(span.error(
+			"Unexpected EOI, expected identifier (fn name)",
+			ReturnValue::UnclosedParens,
+		));
+	};
+	// println!("FN NAME: {}", ident);
+	let args = if let Some(t) = tokens.get(*i) {
+		if matches!(t.val(), Token::Kwd(x) if x == "(") {
+			// if true {
+			*i += 1;
+			let inner_tokens = parse_inner(i, &tokens, "(", ")")?;
+			//println!("{:?}", tokens.get(i));
+			let mut res = Vec::new();
+			let mut first = true;
+			for arg in inner_tokens
+				.split(|tok| matches!(tok.val(), Token::Comma))
+				.filter(|x| !x.is_empty())
+			{
+				// println!("ARG: {:?}", arg);
+				let name = if let Some(t) = arg.get(0) {
+					if let Token::Ident(id) = t.val() {
+						t.clone().map(id)
+					} else {
+						return Err(
+							t.error("Expected identfier", ReturnValue::UnexpectedNonIdentifier)
+						);
+					}
+				} else {
+					unreachable!(); // No empty arrays
+				};
+				let typ = if is_method && first && name.as_ref() == "self" {
+					name.clone().map(ast::TypeData::SelfRef)
+				} else {
+					if let Some(t) = arg.get(1) {
+						if let Token::Semicolon = t.val() {
+						} else {
+							return Err(t.error(
+								"Expected semicolon",
+								ReturnValue::UnexpectedNonIdentifier,
+							));
+						}
+					} else {
+						let mut l = arg.last().unwrap().loc().clone();
+						l.end.col += 1;
+						l.start = l.end;
+						let span = Span::new((), l);
+						return Err(span.error(
+							"Unexpected EOI, expected semicolon",
+							ReturnValue::UnclosedParens,
+						));
+					};
+					match parse_type(&arg, 2) {
+						Ok((v, _)) => v.clone().map(v.as_ref().type_data().clone()),
+						Err(e) => return Err(e),
+					}
+				};
+				first = false;
+				res.push((name, typ))
+			}
+			res
+		} else {
+			return Err(t.error("Expected `(`", ReturnValue::UnexpectedNonIdentifier));
+		}
+	} else {
+		let mut l = tokens.last().unwrap().loc().clone();
+		l.end.col += 1;
+		l.start = l.end;
+		let span = Span::new((), l);
+		return Err(span.error("Unexpected EOI, expected `(`", ReturnValue::UnclosedParens));
+	};
+	// println!("ARGS: {:?}", args);
+
+	let ret_type = if let Some(t) = tokens.get(*i) {
+		if matches!(t.val(), Token::Kwd(k) if k == "->") {
+			*i += 1;
+			let ty = match parse_type(&tokens, *i) {
+				Ok((v, off)) => {
+					*i += off;
+					v
+				}
+				Err(e) => return Err(e),
+			};
+			ty.clone().map(ty.as_ref().type_data().clone())
+		} else {
+			t.clone().map(ast::TypeData::Void)
+		}
+	} else {
+		let mut l = tokens.last().unwrap().loc().clone();
+		l.end.col += 1;
+		l.start = l.end;
+		let span = Span::new((), l);
+		return Err(span.error(
+			"Unexpected EOI, expected `->` or `{`",
+			ReturnValue::UnclosedParens,
+		));
+	};
+	let body = match match value::parse_block(&tokens, *i, intrinsics) {
+		Ok(v) => v,
+		Err(e) => return Err(e),
+	} {
+		Some((v, off)) => {
+			*i += off;
+			v
+		}
+		None => {
+			let mut l = tokens.last().unwrap().loc().clone();
+			l.end.col += 1;
+			l.start = l.end;
+			let span = Span::new((), l);
+			return Err(span.error(
+				"Unexpected EOI, expected block",
+				ReturnValue::UnclosedParens,
+			));
+		}
+	};
+	Ok(Span::join(
+		&[ident.clone(), body.clone().map(String::new())],
+		ast::Item::Fn(ident, args, ret_type, body),
+	))
 }
 
 fn parse_type(tokens: &[Span<Token>], index: usize) -> Result<(Span<ast::Type>, usize), Error> {

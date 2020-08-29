@@ -19,3 +19,17 @@ impl Add<string> for string {
 		INTRINSIC_ADD_STR
 	}
 }
+
+trait Sub<Rhs> {
+	type Output;
+
+	fn sub(self, other: Rhs) -> Output;
+}
+
+impl Sub<number> for number {
+	type Output = number;
+
+	fn sub(self, other: number) -> number {
+		INTRINSIC_SUB_NUM
+	}
+}
