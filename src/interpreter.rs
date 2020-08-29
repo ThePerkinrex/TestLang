@@ -126,8 +126,8 @@ pub fn run_expr(scope: &mut Scope<Value>, type_db: &mut TypeDB, expr: &Expr) -> 
 			return RetVal::Return(res);
 		}
 		Expr::Ident(id) => {
-			println!("IDENT: {}", id);
-			println!("Scopeval: {:?}", scope.get_value(id));
+			// println!("IDENT: {}", id);
+			// println!("Scopeval: {:?}", scope.get_value(id));
 			scope.get_value(id).unwrap().clone()
 		}
 		Expr::Block(b) => run_block(scope, type_db, b),
@@ -227,6 +227,26 @@ pub fn run_expr(scope: &mut Scope<Value>, type_db: &mut TypeDB, expr: &Expr) -> 
 			let lhs_type = type_db.get(&lhs_type_data);
 			let impl_trait = rhs_type.get_impl_trait("Exp", &[&lhs_type]).unwrap();
 			let (method_sig, method_body) = impl_trait.get_method(&"exp".into()).unwrap();
+			match inner_run_fn(scope, type_db, method_sig, method_body.as_ref(), &[rhs, lhs]) {
+				RetVal::Value(v) => v,
+				x => return x
+			}
+		}
+		Expr::Eq(rhs, lhs) => {
+			let rhs_value = match run_expr(scope, type_db, rhs.as_ref().as_ref()) {
+				RetVal::Value(v) => v,
+				x => return x,
+			};
+			let rhs_type_data = rhs_value.get_type(scope, type_db).unwrap();
+			let rhs_type = type_db.get(&rhs_type_data);
+			let lhs_value = match run_expr(scope, type_db, rhs.as_ref().as_ref()) {
+				RetVal::Value(v) => v,
+				x => return x,
+			};
+			let lhs_type_data = lhs_value.get_type(scope, type_db).unwrap();
+			let lhs_type = type_db.get(&lhs_type_data);
+			let impl_trait = rhs_type.get_impl_trait("Eq", &[&lhs_type]).unwrap();
+			let (method_sig, method_body) = impl_trait.get_method(&"eq".into()).unwrap();
 			match inner_run_fn(scope, type_db, method_sig, method_body.as_ref(), &[rhs, lhs]) {
 				RetVal::Value(v) => v,
 				x => return x
@@ -356,6 +376,74 @@ fn run_intrinsic(scope: &Scope<Value>, intrinsic: &Intrinsic) -> RetVal {
 			} else {
 				unreachable!()
 			}
+		}
+		Intrinsic::MulNum => {
+			if let Value::Num(a) = scope.get_value(&"self".into()).unwrap() {
+				if let Value::Num(b) = scope.get_value(&"other".into()).unwrap() {
+					RetVal::Value(Value::Num(a * b))
+				} else {
+					unreachable!()
+				}
+			} else {
+				unreachable!()
+			}
+		}
+		Intrinsic::DivNum => {
+			if let Value::Num(a) = scope.get_value(&"self".into()).unwrap() {
+				if let Value::Num(b) = scope.get_value(&"other".into()).unwrap() {
+					RetVal::Value(Value::Num(a / b))
+				} else {
+					unreachable!()
+				}
+			} else {
+				unreachable!()
+			}
+		}
+		Intrinsic::ExpNum => {
+			if let Value::Num(a) = scope.get_value(&"self".into()).unwrap() {
+				if let Value::Num(b) = scope.get_value(&"other".into()).unwrap() {
+					
+					RetVal::Value(Value::Num(a.powf(*b)))
+				} else {
+					unreachable!()
+				}
+			} else {
+				unreachable!()
+			}
+		}
+
+		Intrinsic::EqNum => {
+			if let Value::Num(a) = scope.get_value(&"self".into()).unwrap() {
+				if let Value::Num(b) = scope.get_value(&"other".into()).unwrap() {
+					RetVal::Value(if a == b {Value::True} else {Value::False})
+				} else {
+					unreachable!()
+				}
+			} else {
+				unreachable!()
+			}
+		}
+		Intrinsic::EqStr => {
+			if let Value::Str(a) = scope.get_value(&"self".into()).unwrap() {
+				if let Value::Str(b) = scope.get_value(&"other".into()).unwrap() {
+					RetVal::Value(if a == b {Value::True} else {Value::False})
+				} else {
+					unreachable!()
+				}
+			} else {
+				unreachable!()
+			}
+		}
+		Intrinsic::EqBool => {
+			let a = scope.get_value(&"self".into()).unwrap();
+			let b = scope.get_value(&"other".into()).unwrap();
+			RetVal::Value(match (a, b) {
+				(Value::True, Value::True) => Value::True,
+				(Value::False, Value::False) => Value::True,
+				(Value::True, Value::False) => Value::False,
+				(Value::False, Value::True) => Value::False,
+				_ => unreachable!()
+			})
 		}
 	}
 }

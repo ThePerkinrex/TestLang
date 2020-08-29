@@ -1,10 +1,6 @@
 fn main() {
 	print("hola");
 }
-fn hola(n: number) -> void {
-	1 + n;
-}
-
-fn adios(n: number, m: number) -> number {
-	n + m
+fn hola() -> bool {
+	true
 }

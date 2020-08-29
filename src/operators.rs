@@ -7,16 +7,18 @@ pub enum Operator {
 	Mul,
 	Div,
 	Exp,
+	Eq
 }
 
 impl Operator {
 	pub fn priority(&self) -> u8 {
 		match self {
-			Self::Add => 0,
-			Self::Sub => 0,
-			Self::Mul => 1,
-			Self::Div => 1,
-			Self::Exp => 2,
+			Self::Eq => 20,
+			Self::Add => 30,
+			Self::Sub => 30,
+			Self::Mul => 40,
+			Self::Div => 40,
+			Self::Exp => 50,
 		}
 	}
 }
@@ -30,6 +32,7 @@ impl TryFrom<&str> for Operator {
 			"*" => Ok(Self::Mul),
 			"/" => Ok(Self::Div),
 			"**" => Ok(Self::Exp),
+			"==" => Ok(Self::Eq),
 			_ => Err(())
 		}
 	}

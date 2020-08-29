@@ -19,6 +19,7 @@ pub enum Expr {
 	Mul(Box<Span<Expr>>, Box<Span<Expr>>),
 	Div(Box<Span<Expr>>, Box<Span<Expr>>),
 	Exp(Box<Span<Expr>>, Box<Span<Expr>>),
+	Eq(Box<Span<Expr>>, Box<Span<Expr>>),
 	Block(Block),
 	// If(
 	// 	Box<Span<Expr>>,
@@ -41,6 +42,7 @@ impl Expr {
 			Operator::Mul => Self::Mul(Box::new(rhs), Box::new(lhs)),
 			Operator::Div => Self::Div(Box::new(rhs), Box::new(lhs)),
 			Operator::Exp => Self::Exp(Box::new(rhs), Box::new(lhs)),
+			Operator::Eq => Self::Eq(Box::new(rhs), Box::new(lhs)),
 		}
 	}
 }
@@ -167,6 +169,23 @@ impl<T: Clone> HasType<T> for Span<Expr> {
 					.clone()
 					.map(TypeError::TraitNotImplemented("Exp".into(), vec![type_db.get(&lhs_type)], rhs_type)));
 			}
+			Expr::Eq(rhs, lhs) => {
+				let rhs_type = match rhs.get_type_with_call_cb(scope, type_db, f) {
+					Ok(v) => v,
+					Err(e) => return Err(e),
+				};
+				let lhs_type = match lhs.get_type_with_call_cb(scope, type_db, f) {
+					Ok(v) => v,
+					Err(e) => return Err(e),
+				};
+				if type_db.get(&rhs_type).get_impl_trait("Eq", &[&type_db.get(&lhs_type)]).is_some() {
+					
+					return Ok(TypeData::Bool);
+				}
+				return Err(rhs
+					.clone()
+					.map(TypeError::TraitNotImplemented("Eq".into(), vec![type_db.get(&lhs_type)], rhs_type)));
+			}
 			Expr::Call(callee, args) => {
 				if let Err(e) = f(&callee) {
 					return Err(e.clone().span(TypeError::Err(e)));
@@ -229,6 +248,7 @@ impl std::fmt::Display for Expr {
 			Self::Mul(rhs, lhs) => write!(f, "({} * {})", rhs, lhs),
 			Self::Div(rhs, lhs) => write!(f, "({} / {})", rhs, lhs),
 			Self::Exp(rhs, lhs) => write!(f, "({} ** {})", rhs, lhs),
+			Self::Eq(rhs, lhs) => write!(f, "({} == {})", rhs, lhs),
 			Self::Value(v) => write!(f, "{}", v),
 			Self::Ident(name) => write!(f, "{}", name),
 			Self::Call(body, args) => write!(

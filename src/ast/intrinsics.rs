@@ -9,6 +9,13 @@ pub enum Intrinsic {
 	AddStr,
 	AddNum,
 	SubNum,
+	MulNum,
+	DivNum,
+	ExpNum,
+
+	EqStr,
+	EqNum,
+	EqBool,
 }
 
 impl Intrinsic {
@@ -18,6 +25,13 @@ impl Intrinsic {
 			"INTRINSIC_ADD_STR" => Some(Self::AddStr),
 			"INTRINSIC_ADD_NUM" => Some(Self::AddNum),
 			"INTRINSIC_SUB_NUM" => Some(Self::SubNum),
+			"INTRINSIC_MUL_NUM" => Some(Self::MulNum),
+			"INTRINSIC_DIV_NUM" => Some(Self::DivNum),
+			"INTRINSIC_EXP_NUM" => Some(Self::ExpNum),
+
+			"INTRINSIC_EQ_NUM" => Some(Self::EqNum),
+			"INTRINSIC_EQ_STR" => Some(Self::EqStr),
+			"INTRINSIC_EQ_BOOL" => Some(Self::EqBool),
 			_ => None
 		}
 	}
@@ -30,6 +44,13 @@ impl<T: Clone> HasType<T> for Intrinsic {
 			Self::AddStr => Ok(TypeData::String),
 			Self::AddNum => Ok(TypeData::Number),
 			Self::SubNum => Ok(TypeData::Number),
+			Self::MulNum => Ok(TypeData::Number),
+			Self::DivNum => Ok(TypeData::Number),
+			Self::ExpNum => Ok(TypeData::Number),
+
+			Self::EqBool => Ok(TypeData::Bool),
+			Self::EqNum => Ok(TypeData::Bool),
+			Self::EqStr => Ok(TypeData::Bool),
 		}
 	}
 }

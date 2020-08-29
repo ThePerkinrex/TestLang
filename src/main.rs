@@ -98,6 +98,8 @@ fn repl() {
         Err(e) => panic!("{:?}", e),
     };
     let mut interpreter_scope = interpreter::load_scope();
+    // let bool_type = type_db.get(&ast::TypeData::Bool);
+    // println!("Bool is eq? {}", bool_type.get_impl_trait("Eq", &[&bool_type]).is_some());
     loop {
         write!(stdout, ">> ");
         stdout.flush().expect("Error flushing");

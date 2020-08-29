@@ -151,7 +151,7 @@ pub fn parse_lines(
 									{
 										let fn_signature = ast::FnSignature(args, Box::new(ret));
 										methods.insert(name.unwrap(), (fn_signature, body));
-										println!("Methods: {:?}", methods);
+										// println!("Methods: {:?}", methods);
 									} else {
 										unreachable!()
 									}
@@ -220,7 +220,7 @@ pub fn parse_lines(
 										));
 									}
 									type_defs.insert(type_name.unwrap(), assigned_type);
-									println!("{:?}", type_defs);
+									// println!("{:?}", type_defs);
 								}
 								_ => {
 									return Err(
@@ -702,6 +702,7 @@ fn parse_type(tokens: &[Span<Token>], index: usize) -> Result<(Span<ast::Type>, 
 				"number" => ast::TypeData::Number.default_type(),
 				"string" => ast::TypeData::String.default_type(),
 				"void" => ast::TypeData::Void.default_type(),
+				"bool" => ast::TypeData::Bool.default_type(),
 				_ => ast::TypeData::Other(i).default_type(),
 			};
 			return Ok((t.clone().map(typ), 1));
@@ -754,7 +755,14 @@ pub fn parse_expr(
 		Ok((v, offset)) => {
 			//println!("{:?}", tokens);
 			//println!("{:?}", v);
-			assert_eq!(offset, len + last, "Didn't parse all the tokens");
+			//assert_eq!(offset, len + last, "Didn't parse all the tokens");
+			if offset != len + last {
+				if offset+1 < len {
+					return Err(tokens[offset+1].error("Unexpected token", ReturnValue::UnexpectedToken))
+				}else{
+					panic!("Offset is greater than token len, ¯\\_(ツ)_/¯")
+				}
+			}
 			Ok(v)
 		}
 		Err(e) => Err(e),
@@ -948,7 +956,11 @@ mod value {
 									v.clone().map(ast::Expr::Value(ast::Value::Num(n)))
 								}
 								Token::Ident(id) => {
-									if intrinsics && id.starts_with("INTRINSIC_") {
+									if id == "true" {
+										v.clone().map(ast::Expr::Value(ast::Value::True))
+									}else if id == "false" {
+										v.clone().map(ast::Expr::Value(ast::Value::False))
+									}else if intrinsics && id.starts_with("INTRINSIC_") {
 										if let Some(i) = ast::intrinsics::Intrinsic::from_str(&id) {
 											v.clone().map(ast::Expr::CompilerIntrinsic(i))
 										} else {

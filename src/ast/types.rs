@@ -73,10 +73,13 @@ pub struct Type {
 
 impl Type {
 	pub fn add_impl_trait(&mut self, impl_trait: ImplTrait) {
-		self.traits.push(impl_trait)
+		// println!("ADDING IMPL {} FOR {}", impl_trait, self);
+		self.traits.push(impl_trait);
+		// println!("Traits: {:?}", self.traits);
 	}
 
 	pub fn get_impl_trait(&self, name: &str, defining_types: &[&Type]) -> Option<&ImplTrait> {
+		// println!("{} traits: {:?}", self, self.traits);
 		for t in &self.traits {
 			if t.trait_name() == name && t.matches(defining_types) {
 				return Some(t);
@@ -110,6 +113,7 @@ impl std::fmt::Display for Type {
 
 #[derive(Clone, Debug, Hash, Eq)]
 pub enum TypeData {
+	Bool,
 	Number,
 	String,
 	Array(Box<TypeData>),
@@ -146,6 +150,7 @@ impl PartialEq for TypeData {
 				v1.iter().zip(v2).fold(true, |b, (v1, v2)| b && v1 == v2)
 			}
 			(Self::SelfRef, Self::SelfRef) => true,
+			(Self::Bool, Self::Bool) => true,
 			(Self::Other(o1), Self::Other(o2)) => o1 == o2,
 			_ => false,
 		}
@@ -155,6 +160,7 @@ impl PartialEq for TypeData {
 impl std::fmt::Display for TypeData {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
 		match self {
+			Self::Bool=> write!(f, "bool"),
 			Self::Number => write!(f, "number"),
 			Self::String => write!(f, "string"),
 			Self::Array(typ) => write!(f, "[{}]", typ),
@@ -277,11 +283,11 @@ impl ImplTrait {
 		mut checker_fn: F,
 	) -> Result<bool, Error> {
 		let mut type_db = type_db.clone().push();
-		println!(
-			"Checking if impl trait {} matches {}",
-			self.trait_name(),
-			t.name
-		);
+		// println!(
+		// 	"Checking if impl trait {} matches {}",
+		// 	self.trait_name(),
+		// 	t.name
+		// );
 		let mut ret = self.trait_name() == t.name.as_ref()
 			&& self.defining_types.len() == t.defining_types.len();
 		for (name, t) in t.defining_types.iter().zip(self.defining_types.iter()) {
@@ -304,44 +310,44 @@ impl ImplTrait {
 			type_db.set(TypeData::Other(self_k.clone()), self_t.val())
 		}
 		for (self_method_name, (self_signature, self_body)) in &self.methods {
-			println!(
-				"Checking {} {:?} is present in trait",
-				self_method_name, self_signature
-			);
+			// println!(
+			// 	"Checking {} {:?} is present in trait",
+			// 	self_method_name, self_signature
+			// );
 			ret = ret
 				&& t.methods
 					.get(self_method_name)
 					.map(|fn_sig| {
-						println!(
-							"[METHOD SIGNATURE] {} {:?} is present in trait",
-							self_method_name, self_signature
-						);
+						// println!(
+						// 	"[METHOD SIGNATURE] {} {:?} is present in trait",
+						// 	self_method_name, self_signature
+						// );
 						let FnSignature(args_other, ret_other) = fn_sig.clone();
 						let FnSignature(args_self, ret_self) = self_signature.clone();
 						let mut ret = type_db.get_no_mut(ret_other.as_ref().as_ref())
 							== type_db.get_no_mut(ret_self.as_ref().as_ref());
-						println!(
-							"{} (({}){:?} == ({}){:?})",
-							ret,
-							ret_other,
-							type_db.get_no_mut(ret_other.as_ref().as_ref()),
-							ret_self,
-							type_db.get_no_mut(ret_self.as_ref().as_ref())
-						);
+						// println!(
+						// 	"{} (({}){:?} == ({}){:?})",
+						// 	ret,
+						// 	ret_other,
+						// 	type_db.get_no_mut(ret_other.as_ref().as_ref()),
+						// 	ret_self,
+						// 	type_db.get_no_mut(ret_self.as_ref().as_ref())
+						// );
 						for ((_, other_type), (_, self_type)) in
 							args_other.iter().zip(args_self.iter())
 						{
 							ret = ret
 								&& type_db.get_no_mut(other_type.as_ref())
 									== type_db.get_no_mut(self_type.as_ref());
-							println!(
-								"{} (({}){:?} == ({}){:?})",
-								ret,
-								other_type,
-								type_db.get_no_mut(other_type.as_ref()),
-								self_type,
-								type_db.get_no_mut(self_type.as_ref())
-							);
+							// println!(
+							// 	"{} (({}){:?} == ({}){:?})",
+							// 	ret,
+							// 	other_type,
+							// 	type_db.get_no_mut(other_type.as_ref()),
+							// 	self_type,
+							// 	type_db.get_no_mut(self_type.as_ref())
+							// );
 						}
 						ret
 					})

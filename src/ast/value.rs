@@ -7,6 +7,8 @@ use super::expr::Expr;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
+	True,
+	False,
 	Num(f64),
 	Str(String),
 	Fn(TypeData, Box<Expr>),
@@ -17,6 +19,8 @@ pub enum Value {
 impl<T: Clone> HasType<T> for Value {
 	fn get_type_with_call_cb<F: FnMut(&Span<super::expr::Expr>) -> Result<(), Error>>(&self, _: &Scope<T>, _:&mut TypeDB, _: &mut F) -> Result<TypeData, Span<TypeError>> {
 		Ok(match self {
+			Self::True => TypeData::Bool,
+			Self::False => TypeData::Bool,
 			Self::Num(_) => TypeData::Number,
 			Self::Str(_) => TypeData::String,
 			Self::Fn(t, _) => t.clone(),
@@ -34,6 +38,8 @@ impl std::fmt::Display for Value {
 			Self::Fn(t, b) => write!(f, "{} {}", t, b),
 			Self::Void => write!(f, "void"),
 			Self::Never => write!(f, "!"),
+			Self::True => write!(f, "true"),
+			Self::False => write!(f, "false"),
 		}
 	}
 }

@@ -56,7 +56,7 @@ pub fn tokenize<FProv: FileProvider<File>, File: FileReader>(file: &str, fprov: 
 				state = State::Normal;
 			} else if matches!(state, State::Normal) {
 				if !kwd.is_empty() {
-					tokens.push(token(Token::Kwd(kwd), file, kwd_start.expect("Kwd start not defined"), line_col(line, i)));
+					tokens.push(token(Token::Kwd(kwd), file, kwd_start.expect("Kwd start not defined"), line_col(line, &(i - 1))));
 					kwd = String::new();
 					kwd_start = None;
 				}

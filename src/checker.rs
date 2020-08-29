@@ -24,18 +24,18 @@ pub fn check(items_slice: &[Span<Item>], type_db: &mut TypeDB) -> Result<(), Err
 	{
 		if args.is_empty() {
 			if ret.as_ref().as_ref() == &TypeData::Void {
-				println!("main found");
+				// println!("main found");
 				let res = check_item(&String::from("main"), &mut scope, type_db).unwrap();
-				println!(
-					"{}",
-					scope.map(&|x| {
-						if let Some((item, checked)) = x {
-							format!("([{}] {})", checked, item)
-						} else {
-							format!("NONE")
-						}
-					})
-				);
+				// println!(
+				// 	"{}",
+				// 	scope.map(&|x| {
+				// 		if let Some((item, checked)) = x {
+				// 			format!("([{}] {})", checked, item)
+				// 		} else {
+				// 			format!("NONE")
+				// 		}
+				// 	})
+				// );
 				res
 			} else {
 				return Err(ret.error(
@@ -123,7 +123,7 @@ pub fn check_fn(
 			ReturnValue::TypesDontMatch,
 		));
 	}
-	println!("Check item's block");
+	// println!("Check item's block");
 	let res = check_expr(&block, scope, type_db);
 	*scope = scope.clone().pop();
 	res
@@ -134,7 +134,7 @@ pub fn check_expr(
 	scope: &mut Scope<Option<(Span<Item>, bool)>>,
 	type_db: &mut TypeDB,
 ) -> Result<(), Error> {
-	println!("Checking expr: {}", expr);
+	// println!("Checking expr: {}", expr);
 	match expr.as_ref() {
 		Expr::Block(b) => {
 			*scope = scope.clone().push();
@@ -220,18 +220,18 @@ fn load_std<P: AsRef<Path>>(
 	let fp = FileProvider::new(&std_path);
 	let files = ["src/std/print.lang", "src/std/ops.lang"];
 	for f in &files {
-		println!("Loading file {}", f);
-		println!("Tokenizing");
+		// println!("Loading file {}", f);
+		// println!("Tokenizing");
 		let tokens = match crate::tokens::tokenize(f, &fp) {
 			Ok(v) => v,
 			Err(e) => return Err(e),
 		};
-		println!("Parsing");
+		// println!("Parsing");
 		let items = match crate::parser::parse_lines(tokens, true) {
 			Ok(v) => v,
 			Err(e) => return Err(e),
 		};
-		println!("Loading items into scope");
+		// println!("Loading items into scope");
 		load_items(&items, scope, type_db, trait_db)?;
 	}
 	Ok(())
@@ -268,8 +268,9 @@ pub fn load_items(
 				None => Ok(()),
 			},
 			Item::ImplTrait(for_type_data, impl_trait) => {
+				// println!("IMPL {} FOR {}", impl_trait, for_type_data);
 				*type_db = type_db.clone().push();
-				let for_type = type_db.get(for_type_data.as_ref());
+				let for_type = type_db.get_or_add_to_root(for_type_data.as_ref());
 				type_db.set(TypeData::SelfRef, for_type);
 				let res = if let Some(t) = trait_db.get(impl_trait.trait_name_string()) {
 					if impl_trait.matches_trait(t, &type_db, |type_db, args, ret, body|{
@@ -278,6 +279,7 @@ pub fn load_items(
 					})? {
 						match type_db.get_mut(for_type_data.as_ref()) {
 							Some(x) => {
+								// println!("Adding impl trait for {}", x);
 								x.add_impl_trait(impl_trait.clone());
 								Ok(())
 							}

@@ -165,7 +165,7 @@ use std::hash::Hash;
 
 #[derive(Clone)]
 pub struct GenericScope<K: Hash + Eq, V: Clone> {
-	parent: Option<Box<GenericScope<K, V>>>,
+	parent: Option<Box<Self>>,
 	variables: HashMap<K, V>,
 }
 
@@ -181,6 +181,22 @@ impl<K: Hash + Eq, V: Clone> GenericScope<K, V> {
 		Self {
 			parent: Some(Box::new(parent)),
 			variables: HashMap::new(),
+		}
+	}
+
+	pub fn get_mut_root(&mut self) -> &mut Self {
+		let mut root = false;
+		if let None = self.parent {
+			root = true;
+		}
+		if root {
+			self
+		}else{
+			if let Some(parent) = &mut self.parent {
+				parent.get_mut_root()
+			}else{
+				unreachable!()
+			}
 		}
 	}
 
@@ -302,7 +318,15 @@ impl TypeDB {
 	}
 
 	pub fn get(&mut self, data: &ast::TypeData) -> ast::Type {
-		println!("Getting: {}", data);
+		self.clone().get_or(data, |d| self.add(d).unwrap())
+	}
+
+	pub fn get_or_add_to_root(&mut self, data: &ast::TypeData) -> ast::Type {
+		self.clone().get_or(data, |d| self.add_root(d).unwrap())
+	}
+
+	fn get_or<'a, F: FnMut(ast::TypeData)>(&self, data: &ast::TypeData, mut f: F) -> ast::Type {
+		// println!("Getting: {}", data);
 		#[allow(unused_assignments)]
 		let mut add = false;
 		match self.0.clone().get(data) {
@@ -312,9 +336,9 @@ impl TypeDB {
 			}
 		};
 		if add {
-			println!("Adding: {}", data);
+			// println!("Adding: {}", data);
 			// let t = data.clone().default_type();
-			self.add(data.clone()).unwrap();
+			f(data.clone());
 			data.clone().default_type()
 		}else{
 			unreachable!()
@@ -329,8 +353,12 @@ impl TypeDB {
 		self.0.add(data.clone(), data.default_type())
 	}
 
+	pub fn add_root(&mut self, data: ast::TypeData) -> Result<(), &ast::Type> {
+		self.0.get_mut_root().add(data.clone(), data.default_type())
+	}
+
 	pub fn set(&mut self, data: ast::TypeData, t: ast::Type) {
-		println!("Setting: {}", data);
+		// println!("Setting: {}", data);
 		match self.0.set(&data, t.clone()) {
 			Ok(_) => (),
 			Err(_) => self.0.add(data, t).unwrap()

@@ -33,3 +33,67 @@ impl Sub<number> for number {
 		INTRINSIC_SUB_NUM
 	}
 }
+
+trait Mul<Rhs> {
+	type Output;
+
+	fn mul(self, other: Rhs) -> Output;
+}
+
+impl Mul<number> for number {
+	type Output = number;
+
+	fn mul(self, other: number) -> number {
+		INTRINSIC_MUL_NUM
+	}
+}
+
+trait Div<Rhs> {
+	type Output;
+
+	fn div(self, other: Rhs) -> Output;
+}
+
+impl Div<number> for number {
+	type Output = number;
+
+	fn div(self, other: number) -> number {
+		INTRINSIC_DIV_NUM
+	}
+}
+
+trait Exp<Rhs> {
+	type Output;
+
+	fn exp(self, other: Rhs) -> Output;
+}
+
+impl Exp<number> for number {
+	type Output = number;
+
+	fn exp(self, other: number) -> number {
+		INTRINSIC_EXP_NUM
+	}
+}
+
+trait Eq<Rhs> {
+	fn eq(self, other: Rhs) -> bool;
+}
+
+impl Eq<number> for number {
+	fn eq(self, other: number) -> bool {
+		INTRINSIC_EQ_NUM
+	}
+}
+
+impl Eq<bool> for bool {
+	fn eq(self, other: bool) -> bool {
+		INTRINSIC_EQ_BOOL
+	}
+}
+
+impl Eq<string> for string {
+	fn eq(self, other: string) -> bool {
+		INTRINSIC_EQ_STR
+	}
+}
