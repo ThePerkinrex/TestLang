@@ -11,7 +11,7 @@ mod span;
 mod tokens;
 mod utils;
 
-use file_provider::{FileProvider, FileReader};
+// use file_provider::{FileProvider, FileReader};
 use std::env::current_dir;
 use utils::RecursiveFn;
 

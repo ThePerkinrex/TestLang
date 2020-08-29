@@ -161,7 +161,7 @@ impl<T: Clone + std::fmt::Display> std::fmt::Display for Scope<T> {
 }
 
 use std::hash::Hash;
-use std::ops::Index;
+// use std::ops::Index;
 
 #[derive(Clone)]
 pub struct GenericScope<K: Hash + Eq, V: Clone> {
@@ -253,16 +253,16 @@ impl<K: Hash + Eq, V: Clone> GenericScope<K, V> {
 		Ok(())
 	}
 
-	pub fn map<U: Clone, F: Fn(V) -> U>(mut self, f: &F) -> GenericScope<K, U> {
-		GenericScope {
-			parent: self.parent.map(|p| Box::new(p.map(f))),
-			variables: self
-				.variables
-				.drain()
-				.map(|(k, v)| (k, f(v)))
-				.collect(),
-		}
-	}
+	// pub fn map<U: Clone, F: Fn(V) -> U>(mut self, f: &F) -> GenericScope<K, U> {
+	// 	GenericScope {
+	// 		parent: self.parent.map(|p| Box::new(p.map(f))),
+	// 		variables: self
+	// 			.variables
+	// 			.drain()
+	// 			.map(|(k, v)| (k, f(v)))
+	// 			.collect(),
+	// 	}
+	// }
 }
 
 impl<K: Hash + Eq + std::fmt::Display, V: Clone + std::fmt::Display> std::fmt::Display for GenericScope<K, V> {
@@ -337,7 +337,7 @@ impl TypeDB {
 		}
 	}
 
-	pub fn map<U: Clone, F: Fn(ast::Type) -> U>(self, f: &F) -> GenericScope<ast::TypeData, U> {
-		self.0.map(f)
-	}
+	// pub fn map<U: Clone, F: Fn(ast::Type) -> U>(self, f: &F) -> GenericScope<ast::TypeData, U> {
+	// 	self.0.map(f)
+	// }
 }

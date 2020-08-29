@@ -15,16 +15,16 @@ pub enum ReturnValue {
 	UnclosedBracket,
 	UnexpectedNonValue,
 	UnexpectedNonIdentifier,
-	UnexpectedType,
-	ExpectedType,
-	ExpectedReturnKwd,
+	// UnexpectedType,
+	// ExpectedType,
+	// ExpectedReturnKwd,
 	NoMain,
 	MainHasArguments,
 	MainNonVoidRetType,
 	NameDefined,
 	TypesDontMatch,
 	TraitNotImplemented,
-	BrnchRetTypesDontMatch,
+	// BrnchRetTypesDontMatch,
 	IdentNotDefined,
 	IntrinsicNotDefined,
 	ExpectedSemicolon,
@@ -72,10 +72,10 @@ impl Error {
 		}
 	}
 
-	pub fn note<T: ToString>(mut self, n: T) -> Self {
-		self.notes.push(n.to_string());
-		self
-	}
+	// pub fn note<T: ToString>(mut self, n: T) -> Self {
+	// 	self.notes.push(n.to_string());
+	// 	self
+	// }
 
 	pub fn span<T: Clone>(self, v: T) -> Span<T> {
 		Span::new(v, self.loc)

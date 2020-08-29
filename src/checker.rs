@@ -200,9 +200,9 @@ fn get_type_error(t: Span<TypeError>) -> Error {
 			),
 			ReturnValue::TraitNotImplemented,
 		),
-		TypeError::BranchesDontMatch => {
-			t.error("Branches dont match", ReturnValue::BrnchRetTypesDontMatch)
-		}
+		// TypeError::BranchesDontMatch => {
+		// 	t.error("Branches dont match", ReturnValue::BrnchRetTypesDontMatch)
+		// }
 		TypeError::IdentNotFound(id) => t.error(
 			format!("Name `{}` not defined", id),
 			ReturnValue::IdentNotDefined,

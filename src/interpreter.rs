@@ -57,7 +57,7 @@ fn load_std<P: AsRef<Path>>(scope: &mut Scope<Value>, std_path: P) -> Result<(),
 	Ok(())
 }
 
-fn load_items_into_scope(scope: &mut Scope<Value>, type_db: &TypeDB, items: &[Span<Item>]) {
+fn load_items_into_scope(scope: &mut Scope<Value>, _type_db: &TypeDB, items: &[Span<Item>]) {
 	for item in items {
 		match item.as_ref() {
 			Item::Fn(name, _, _, body) => {

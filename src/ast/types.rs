@@ -179,7 +179,7 @@ impl std::fmt::Display for TypeData {
 #[derive(Debug, Clone)]
 pub enum TypeError {
 	TraitNotImplemented(String, Vec<Type>, TypeData),
-	BranchesDontMatch,
+	// BranchesDontMatch,
 	IdentNotFound(Ident),
 	Err(Error),
 }
