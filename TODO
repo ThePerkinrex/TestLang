@@ -1,0 +1,4 @@
+Split std between core and std
+
+Add modules
+Add conditional compilation depending on the backend
