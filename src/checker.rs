@@ -10,55 +10,66 @@ use std::path::Path;
 
 pub type TraitDB = HashMap<Ident, Trait>;
 
-pub fn check(items_slice: &[Span<Item>], type_db: &mut TypeDB) -> Result<(), Error> {
+pub fn check(items_slice: &[Span<Item>], type_db: &mut TypeDB, library: bool) -> Result<(), Error> {
 	let mut trait_db = TraitDB::new();
 	let mut scope = match load_scope(type_db, &mut trait_db) {
 		Ok(v) => v,
 		Err(e) => return Err(e),
 	};
 	load_items(items_slice, &mut scope, type_db, &mut trait_db)?;
-	println!("Loaded items, checking main");
-	if let Ok(TypeData::Fn(FnSignature(args, ret))) = scope
-		.get_type(&String::from("main"))
-		.map(|x| x.unwrap_ref())
-	{
-		if args.is_empty() {
-			if ret.as_ref().as_ref() == &TypeData::Void {
-				// println!("main found");
-				let res = check_item(&String::from("main"), &mut scope, type_db).unwrap();
-				// println!(
-				// 	"{}",
-				// 	scope.map(&|x| {
-				// 		if let Some((item, checked)) = x {
-				// 			format!("([{}] {})", checked, item)
-				// 		} else {
-				// 			format!("NONE")
-				// 		}
-				// 	})
-				// );
-				res
+	if !library {
+		println!("Loaded items, checking main");
+		if let Ok(TypeData::Fn(FnSignature(args, ret))) = scope
+			.get_type(&String::from("main"))
+			.map(|x| x.unwrap_ref())
+		{
+			if args.is_empty() {
+				if ret.as_ref().as_ref() == &TypeData::Void {
+					// println!("main found");
+					let res = check_item(&String::from("main"), &mut scope, type_db).unwrap();
+					// println!(
+					// 	"{}",
+					// 	scope.map(&|x| {
+					// 		if let Some((item, checked)) = x {
+					// 			format!("([{}] {})", checked, item)
+					// 		} else {
+					// 			format!("NONE")
+					// 		}
+					// 	})
+					// );
+					res
+				} else {
+					return Err(ret.error(
+						"Return type should be void for main",
+						ReturnValue::MainNonVoidRetType,
+					));
+				}
 			} else {
-				return Err(ret.error(
-					"Return type should be void for main",
-					ReturnValue::MainNonVoidRetType,
+				let spans = args
+					.iter()
+					.map(|(_, x)| x.clone())
+					.collect::<Vec<Span<TypeData>>>();
+				return Err(Span::join(&spans, ()).error(
+					"Main fubction shouldn't have arguments",
+					ReturnValue::MainHasArguments,
 				));
 			}
 		} else {
-			let spans = args
-				.iter()
-				.map(|(_, x)| x.clone())
-				.collect::<Vec<Span<TypeData>>>();
-			return Err(Span::join(&spans, ()).error(
-				"Main fubction shouldn't have arguments",
-				ReturnValue::MainHasArguments,
-			));
+			return Err(items_slice
+				.first()
+				.unwrap()
+				.error("No main function in non library", ReturnValue::NoMain));
 		}
-	} else {
-		return Err(items_slice
-			.first()
-			.unwrap()
-			.error("No main function", ReturnValue::NoMain));
+	}else{
+		for item in items_slice {
+			if let Item::Fn(a, _, _, _) = item.as_ref() {
+				println!("Checking: {}", a.as_ref());
+				check_item(a.as_ref(), &mut scope, type_db).unwrap()?;
+			}
+		}
+		Ok(())
 	}
+	
 }
 
 pub fn load_scope(

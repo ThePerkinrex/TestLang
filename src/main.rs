@@ -11,6 +11,9 @@ mod span;
 mod tokens;
 mod utils;
 
+mod backend;
+mod options;
+
 // use file_provider::{FileProvider, FileReader};
 use std::env::current_dir;
 use utils::RecursiveFn;
@@ -19,10 +22,14 @@ use termcolor::{BufferWriter, ColorChoice};
 
 use std::time::Instant;
 
+use structopt::StructOpt;
+
 fn main() {
+    let opts = options::Options::from_args();
+    println!("{:?}", opts);
     let fprov = file_provider::fs::FileProvider::new(&current_dir().expect("NO CWD"));
     let start_tok = Instant::now();
-    let tokens = match tokens::tokenize("test_files/test.lang", &fprov) {
+    let tokens = match tokens::tokenize(&opts.input_file, &fprov) {
         Ok(t) => t,
         Err(e) => {
             println!("Tokenization time: {}", start_tok.elapsed().as_secs_f32());
@@ -51,7 +58,7 @@ fn main() {
             );
             println!("Checking");
             let start_check = Instant::now();
-            if let Err(e) = checker::check(&items, &mut type_db) {
+            if let Err(e) = checker::check(&items, &mut type_db, opts.lib) {
                 let check_time = start_check.elapsed();
                 println!("Check time: {}", check_time.as_secs_f32());
                 println!("Tokenize, parse and check time: {}", (parse_time + tok_time + check_time).as_secs_f32());
@@ -62,8 +69,9 @@ fn main() {
             println!("Check time: {}", check_time.as_secs_f32());
             println!("Tokenize, parse and check time: {}", (parse_time + tok_time + check_time).as_secs_f32());
             
-            println!("Interpreting");
-            interpreter::interpret_items(&items, &mut type_db)
+            println!("Codegen phase");
+            let (codegen_opts, backend) = opts.into_codegen_options();
+            backend.get_codegen().gen_code(&items, &mut type_db, codegen_opts);
         }
         Err(e) => {
             let parse_time = start_parse.elapsed();
@@ -76,7 +84,7 @@ fn main() {
         }
     };
 
-    repl();
+    // repl();
     // let ast = parser::parse_expr(tokens);
     // println!("{}", ast);
     // let tokens = tokens::tokenize("1 + 2 * 3 * 4 + 1");
